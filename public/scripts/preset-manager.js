@@ -626,6 +626,7 @@ class PresetManager {
             'bypass_status_check',
             'infermaticai_model',
             'dreamgen_model',
+            'aimlapi_model',
             'openrouter_model',
             'featherless_model',
             'max_tokens_second',

@@ -51,6 +51,7 @@ const {
     INFERMATICAI,
     DREAMGEN,
     OPENROUTER,
+    AIMLAPI,
     KOBOLDCPP,
     HUGGINGFACE,
     FEATHERLESS,
@@ -115,6 +116,7 @@ export let TOGETHERAI_SERVER = 'https://api.together.xyz';
 export let INFERMATICAI_SERVER = 'https://api.totalgpt.ai';
 export let DREAMGEN_SERVER = 'https://dreamgen.com';
 export let OPENROUTER_SERVER = 'https://openrouter.ai/api';
+export let AIMLAPI_SERVER = 'https://api.aimlapi.com/v1';
 export let FEATHERLESS_SERVER = 'https://api.featherless.ai/v1';
 
 export const SERVER_INPUTS = {
@@ -199,6 +201,7 @@ const settings = {
     infermaticai_model: '',
     ollama_model: '',
     aimlapi_model: 'gpt-4o-mini-2024-07-18',
+    aimlapi_providers: [],
     openrouter_model: 'openrouter/auto',
     openrouter_providers: [],
     vllm_model: '',
@@ -343,6 +346,8 @@ export function getTextGenServer(type = null) {
             return DREAMGEN_SERVER;
         case OPENROUTER:
             return OPENROUTER_SERVER;
+        case AIMLAPI:
+            return AIMLAPI_SERVER;
         default:
             return settings.server_urls[selectedType] ?? '';
     }
@@ -559,6 +564,7 @@ export function loadTextGenSettings(data, loadedSettings) {
 
     $('#textgen_type').val(settings.type);
     $('#openrouter_providers_text').val(settings.openrouter_providers).trigger('change');
+    $('#aimlapi_providers_text').val(settings.aimlapi_providers).trigger('change');
     showTypeSpecificControls(settings.type);
     BIAS_CACHE.delete(BIAS_KEY);
     displayLogitBias(settings.logit_bias, BIAS_KEY);
@@ -865,6 +871,19 @@ jQuery(function () {
     }
 
     $('#textgen_logit_bias_new_entry').on('click', () => createNewLogitBiasEntry(settings.logit_bias, BIAS_KEY));
+
+    $('#aimlapi_providers_text').on('change', function () {
+        const selectedProviders = $(this).val();
+
+        // Not a multiple select?
+        if (!Array.isArray(selectedProviders)) {
+            return;
+        }
+
+        settings.aimlapi_providers = selectedProviders;
+
+        saveSettingsDebounced();
+    });
 
     $('#openrouter_providers_text').on('change', function () {
         const selectedProviders = $(this).val();
@@ -1195,6 +1214,8 @@ export function getTextGenModel() {
             return settings.dreamgen_model;
         case OPENROUTER:
             return settings.openrouter_model;
+        case AIMLAPI:
+            return settings.aimlapi_model;
         case VLLM:
             return settings.vllm_model;
         case APHRODITE:

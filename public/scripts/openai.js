@@ -1827,7 +1827,7 @@ function saveModelList(data) {
         $('#model_aimlapi_select').empty();
         const chatModels = model_list.filter(m => m.type === 'chat-completion');
 
-        appendAimlapiOptions(openRouterGroupByVendor(chatModels));
+        appendAimlapiOptions(aimlapiGroupByVendor(chatModels));
 
         if (!oai_settings.aimlapi_model && chatModels.length > 0) {
             oai_settings.aimlapi_model = chatModels[0].id;
@@ -1962,6 +1962,20 @@ const openRouterSortBy = (data, property = 'alphabetically') => {
 function openRouterGroupByVendor(array) {
     return array.reduce((acc, curr) => {
         const vendor = curr.id.split('/')[0];
+
+        if (!acc.has(vendor)) {
+            acc.set(vendor, []);
+        }
+
+        acc.get(vendor).push(curr);
+
+        return acc;
+    }, new Map());
+}
+
+function aimlapiGroupByVendor(array) {
+    return array.reduce((acc, curr) => {
+        const vendor = curr.info.developer;
 
         if (!acc.has(vendor)) {
             acc.set(vendor, []);

@@ -18,7 +18,7 @@ let aphroditeModels = [];
 let featherlessModels = [];
 let tabbyModels = [];
 export let openRouterModels = [];
-let aimlapiModels = [];
+export let aimlapiModels = [];
 
 /**
  * List of OpenRouter providers.
@@ -287,13 +287,20 @@ export async function loadAimlapiModels(data) {
     }
 
     $('#aimlapi_model').empty();
-    const grouped = data.filter(m => !m.type || m.type === 'text-completion')
-        .reduce((acc, model) => {
-            const vendor = model.id.split('/')[0];
-            if (!acc.has(vendor)) acc.set(vendor, []);
-            acc.get(vendor).push(model);
-            return acc;
-        }, new Map());
+
+    const grouped = data
+      .filter(m => !m.type || m.type === 'chat-completion')
+      .reduce((acc, curr) => {
+        const vendor = curr.info.developer;
+
+        if (!acc.has(vendor)) {
+          acc.set(vendor, []);
+        }
+
+        acc.get(vendor).push(curr);
+
+        return acc;
+      }, new Map());
 
     grouped.forEach((models, vendor) => {
         const optgroup = $(`<optgroup label="${vendor}">`);
@@ -304,6 +311,7 @@ export async function loadAimlapiModels(data) {
             option.selected = model.id === textgen_settings.aimlapi_model;
             $(optgroup).append(option);
         }
+
         $('#aimlapi_model').append(optgroup);
     });
 }
@@ -771,7 +779,7 @@ function getAimlapiModelTemplate(option) {
         return option.text;
     }
 
-    const vendor = model.id.split('/')[0];
+    const vendor = model.info.developer;
 
     return $((`
         <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">

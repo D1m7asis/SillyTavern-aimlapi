@@ -1,4 +1,4 @@
-import { TEXTGEN_TYPES, OPENROUTER_HEADERS, FEATHERLESS_HEADERS } from './constants.js';
+import {TEXTGEN_TYPES, OPENROUTER_HEADERS, FEATHERLESS_HEADERS, AIMLAPI_HEADERS} from './constants.js';
 import { SECRET_KEYS, readSecret } from './endpoints/secrets.js';
 import { getConfigValue } from './util.js';
 
@@ -53,6 +53,18 @@ function getDreamGenHeaders(directories) {
     return apiKey ? ({
         'Authorization': `Bearer ${apiKey}`,
     }) : {};
+}
+
+/**
+ * Gets the headers for the AI/ML API.
+ * @param {import('./users.js').UserDirectoryList} directories User directories
+ * @returns {object} Headers for the request
+ */
+function getAimlapiHeaders(directories) {
+    const apiKey = readSecret(directories, SECRET_KEYS.AIMLAPI);
+    const baseHeaders = { ...AIMLAPI_HEADERS };
+
+    return apiKey ? Object.assign(baseHeaders, { 'Authorization': `Bearer ${apiKey}` }) : baseHeaders;
 }
 
 /**
@@ -222,12 +234,12 @@ export function setAdditionalHeadersByType(requestHeaders, type, server, directo
         [TEXTGEN_TYPES.OOBA]: getOobaHeaders,
         [TEXTGEN_TYPES.INFERMATICAI]: getInfermaticAIHeaders,
         [TEXTGEN_TYPES.DREAMGEN]: getDreamGenHeaders,
+        [TEXTGEN_TYPES.AIMLAPI]: getAimlapiHeaders,
         [TEXTGEN_TYPES.OPENROUTER]: getOpenRouterHeaders,
         [TEXTGEN_TYPES.KOBOLDCPP]: getKoboldCppHeaders,
         [TEXTGEN_TYPES.LLAMACPP]: getLlamaCppHeaders,
         [TEXTGEN_TYPES.FEATHERLESS]: getFeatherlessHeaders,
         [TEXTGEN_TYPES.HUGGINGFACE]: getHuggingFaceHeaders,
-        [TEXTGEN_TYPES.AIMLAPI]: getGenericHeaders,
         [TEXTGEN_TYPES.GENERIC]: getGenericHeaders,
     };
 

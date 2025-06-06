@@ -336,6 +336,11 @@ export const OPENROUTER_HEADERS = {
     'X-Title': 'SillyTavern',
 };
 
+export const AIMLAPI_HEADERS = {
+    'HTTP-Referer': 'https://sillytavern.app',
+    'X-Title': 'SillyTavern',
+};
+
 export const FEATHERLESS_HEADERS = {
     'HTTP-Referer': 'https://sillytavern.app',
     'X-Title': 'SillyTavern',
