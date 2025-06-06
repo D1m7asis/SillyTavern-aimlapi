@@ -121,6 +121,7 @@ router.post('/status', async function (request, response) {
             case TEXTGEN_TYPES.LLAMACPP:
             case TEXTGEN_TYPES.INFERMATICAI:
             case TEXTGEN_TYPES.OPENROUTER:
+            case TEXTGEN_TYPES.AIMLAPI:
             case TEXTGEN_TYPES.FEATHERLESS:
                 url += '/v1/models';
                 break;
@@ -308,6 +309,7 @@ router.post('/generate', async function (request, response) {
             case TEXTGEN_TYPES.OLLAMA:
                 url += '/api/generate';
                 break;
+            case TEXTGEN_TYPES.AIMLAPI:
             case TEXTGEN_TYPES.OPENROUTER:
                 url += '/v1/chat/completions';
                 break;

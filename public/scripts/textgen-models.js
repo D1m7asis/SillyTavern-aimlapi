@@ -272,6 +272,29 @@ export async function loadOpenRouterModels(data) {
     calculateOpenRouterCost();
 }
 
+export async function loadAimlapiModels(data) {
+    if (!Array.isArray(data)) {
+        console.error('Invalid AI/ML API models data', data);
+        return;
+    }
+
+    data.sort((a, b) => a.id.localeCompare(b.id));
+
+    if (!data.find(x => x.id === textgen_settings.aimlapi_model)) {
+        textgen_settings.aimlapi_model = data[0]?.id || '';
+    }
+
+    $('#aimlapi_model').empty();
+    for (const model of data) {
+        if (model.type && model.type !== 'text-completion') continue;
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.text = model.info?.name || model.id;
+        option.selected = model.id === textgen_settings.aimlapi_model;
+        $('#aimlapi_model').append(option);
+    }
+}
+
 export async function loadVllmModels(data) {
     if (!Array.isArray(data)) {
         console.error('Invalid vLLM models data', data);

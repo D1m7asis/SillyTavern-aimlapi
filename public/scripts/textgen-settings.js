@@ -20,6 +20,7 @@ import { ENCODE_TOKENIZERS, TEXTGEN_TOKENIZERS, getTextTokens, tokenizers } from
 import { getSortableDelay, onlyUnique, arraysEqual } from './utils.js';
 
 export const textgen_types = {
+    AIMLAPI: 'aimlapi',
     OOBA: 'ooba',
     MANCER: 'mancer',
     VLLM: 'vllm',
@@ -197,6 +198,7 @@ const settings = {
     togetherai_model: 'Gryphe/MythoMax-L2-13b',
     infermaticai_model: '',
     ollama_model: '',
+    aimlapi_model: 'gpt-4o-mini-2024-07-18',
     openrouter_model: 'openrouter/auto',
     openrouter_providers: [],
     vllm_model: '',
