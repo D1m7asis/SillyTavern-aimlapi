@@ -18,6 +18,7 @@ let aphroditeModels = [];
 let featherlessModels = [];
 let tabbyModels = [];
 export let openRouterModels = [];
+let aimlapiModels = [];
 
 /**
  * List of OpenRouter providers.
@@ -279,20 +280,32 @@ export async function loadAimlapiModels(data) {
     }
 
     data.sort((a, b) => a.id.localeCompare(b.id));
+    aimlapiModels = data;
 
     if (!data.find(x => x.id === textgen_settings.aimlapi_model)) {
         textgen_settings.aimlapi_model = data[0]?.id || '';
     }
 
     $('#aimlapi_model').empty();
-    for (const model of data) {
-        if (model.type && model.type !== 'text-completion') continue;
-        const option = document.createElement('option');
-        option.value = model.id;
-        option.text = model.info?.name || model.id;
-        option.selected = model.id === textgen_settings.aimlapi_model;
-        $('#aimlapi_model').append(option);
-    }
+    const grouped = data.filter(m => !m.type || m.type === 'text-completion')
+        .reduce((acc, model) => {
+            const vendor = model.id.split('/')[0];
+            if (!acc.has(vendor)) acc.set(vendor, []);
+            acc.get(vendor).push(model);
+            return acc;
+        }, new Map());
+
+    grouped.forEach((models, vendor) => {
+        const optgroup = $(`<optgroup label="${vendor}">`);
+        for (const model of models) {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.text = model.info?.name || model.id;
+            option.selected = model.id === textgen_settings.aimlapi_model;
+            $(optgroup).append(option);
+        }
+        $('#aimlapi_model').append(optgroup);
+    });
 }
 
 export async function loadVllmModels(data) {
@@ -665,6 +678,12 @@ function onAphroditeModelSelect() {
     $('#api_button_textgenerationwebui').trigger('click');
 }
 
+function onAimlapiModelSelect() {
+    const modelId = String($('#aimlapi_model').val());
+    textgen_settings.aimlapi_model = modelId;
+    $('#api_button_textgenerationwebui').trigger('click');
+}
+
 function getMancerModelTemplate(option) {
     const model = mancerModels.find(x => x.id === option?.element?.value);
 
@@ -741,6 +760,22 @@ function getOpenRouterModelTemplate(option) {
     return $((`
         <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">
             <div><strong>${DOMPurify.sanitize(model.name)}</strong> | ${model.context_length} ctx | <small>${price}</small></div>
+        </div>
+    `));
+}
+
+function getAimlapiModelTemplate(option) {
+    const model = aimlapiModels.find(x => x.id === option?.element?.value);
+
+    if (!option.id || !model) {
+        return option.text;
+    }
+
+    const vendor = model.id.split('/')[0];
+
+    return $((`
+        <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">
+            <div><strong>${DOMPurify.sanitize(model.info?.name || model.id)}</strong> | ${vendor}</div>
         </div>
     `));
 }
@@ -964,6 +999,7 @@ export function initTextGenModels() {
     $('#ollama_download_model').on('click', downloadOllamaModel);
     $('#vllm_model').on('change', onVllmModelSelect);
     $('#aphrodite_model').on('change', onAphroditeModelSelect);
+    $('#aimlapi_model').on('change', onAimlapiModelSelect);
     $('#tabby_download_model').on('click', downloadTabbyModel);
     $('#tabby_model').on('change', onTabbyModelSelect);
     $('#featherless_model').on('change', () => onFeatherlessModelSelect(String($('#featherless_model').val())));
@@ -1038,6 +1074,13 @@ export function initTextGenModels() {
             searchInputCssClass: 'text_pole',
             width: '100%',
             templateResult: getAphroditeModelTemplate,
+        });
+        $('#aimlapi_model').select2({
+            placeholder: t`Select a model`,
+            searchInputPlaceholder: t`Search models...`,
+            searchInputCssClass: 'text_pole',
+            width: '100%',
+            templateResult: getAimlapiModelTemplate,
         });
         providersSelect.select2({
             sorter: data => data.sort((a, b) => a.text.localeCompare(b.text)),

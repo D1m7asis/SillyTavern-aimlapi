@@ -295,6 +295,7 @@ router.post('/generate', async function (request, response) {
             case TEXTGEN_TYPES.TOGETHERAI:
             case TEXTGEN_TYPES.INFERMATICAI:
             case TEXTGEN_TYPES.HUGGINGFACE:
+            case TEXTGEN_TYPES.AIMLAPI:
                 url += '/v1/completions';
                 break;
             case TEXTGEN_TYPES.DREAMGEN:
@@ -309,7 +310,6 @@ router.post('/generate', async function (request, response) {
             case TEXTGEN_TYPES.OLLAMA:
                 url += '/api/generate';
                 break;
-            case TEXTGEN_TYPES.AIMLAPI:
             case TEXTGEN_TYPES.OPENROUTER:
                 url += '/v1/chat/completions';
                 break;
