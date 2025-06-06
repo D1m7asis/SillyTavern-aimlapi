@@ -1826,13 +1826,8 @@ function saveModelList(data) {
     if (oai_settings.chat_completion_source == chat_completion_sources.AIMLAPI) {
         $('#model_aimlapi_select').empty();
         const chatModels = model_list.filter(m => m.type === 'chat-completion');
-        chatModels.forEach((model) => {
-            $('#model_aimlapi_select').append(
-                $('<option>', {
-                    value: model.id,
-                    text: model.id,
-                }));
-        });
+
+        appendAimlapiOptions(openRouterGroupByVendor(chatModels));
 
         if (!oai_settings.aimlapi_model && chatModels.length > 0) {
             oai_settings.aimlapi_model = chatModels[0].id;
@@ -1976,6 +1971,42 @@ function openRouterGroupByVendor(array) {
 
         return acc;
     }, new Map());
+}
+
+function appendAimlapiOptions(model_list) {
+    const appendOption = (model, parent = null) => {
+        (parent || $('#model_aimlapi_select')).append(
+            $('<option>', {
+                value: model.id,
+                text: model.info?.name || model.name || model.id,
+            }));
+    };
+
+    model_list.forEach((models, vendor) => {
+        const optgroup = $(`<optgroup label="${vendor}">`);
+
+        models.forEach((model) => {
+            appendOption(model, optgroup);
+        });
+
+        $('#model_aimlapi_select').append(optgroup);
+    });
+}
+
+function getAimlapiModelTemplate(option) {
+    const model = model_list.find(x => x.id === option?.element?.value);
+
+    if (!option.id || !model) {
+        return option.text;
+    }
+
+    const vendor = model.id.split('/')[0];
+
+    return $((`
+        <div class="flex-container flexFlowColumn" title="${DOMPurify.sanitize(model.id)}">
+            <div><strong>${DOMPurify.sanitize(model.info?.name || model.name || model.id)}</strong> | ${vendor}</div>
+        </div>
+    `));
 }
 
 async function sendAltScaleRequest(messages, logit_bias, signal, type) {
@@ -5974,6 +6005,13 @@ export function initOpenAI() {
             searchInputCssClass: 'text_pole',
             width: '100%',
             templateResult: getOpenRouterModelTemplate,
+        });
+        $('#model_aimlapi_select').select2({
+            placeholder: t`Select a model`,
+            searchInputPlaceholder: t`Search models...`,
+            searchInputCssClass: 'text_pole',
+            width: '100%',
+            templateResult: getAimlapiModelTemplate,
         });
     }
 
