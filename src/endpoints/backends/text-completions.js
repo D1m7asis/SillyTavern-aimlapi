@@ -120,6 +120,7 @@ router.post('/status', async function (request, response) {
             case TEXTGEN_TYPES.KOBOLDCPP:
             case TEXTGEN_TYPES.LLAMACPP:
             case TEXTGEN_TYPES.INFERMATICAI:
+            case TEXTGEN_TYPES.AIMLAPI:
             case TEXTGEN_TYPES.OPENROUTER:
             case TEXTGEN_TYPES.FEATHERLESS:
                 url += '/v1/models';
@@ -294,6 +295,7 @@ router.post('/generate', async function (request, response) {
             case TEXTGEN_TYPES.TOGETHERAI:
             case TEXTGEN_TYPES.INFERMATICAI:
             case TEXTGEN_TYPES.HUGGINGFACE:
+            case TEXTGEN_TYPES.AIMLAPI:
                 url += '/v1/completions';
                 break;
             case TEXTGEN_TYPES.DREAMGEN:
@@ -342,7 +344,7 @@ router.post('/generate', async function (request, response) {
             args.body = JSON.stringify(request.body);
         }
 
-        if (request.body.api_type === TEXTGEN_TYPES.GENERIC) {
+        if (request.body.api_type === TEXTGEN_TYPES.GENERIC || request.body.api_type === TEXTGEN_TYPES.AIMLAPI) {
             request.body = _.pickBy(request.body, (_, key) => OPENAI_KEYS.includes(key));
             if (Array.isArray(request.body.stop)) { request.body.stop = request.body.stop.slice(0, 4); }
             args.body = JSON.stringify(request.body);

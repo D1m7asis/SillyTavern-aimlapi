@@ -32,6 +32,7 @@ export const textgen_types = {
     INFERMATICAI: 'infermaticai',
     DREAMGEN: 'dreamgen',
     OPENROUTER: 'openrouter',
+    AIMLAPI: 'aimlapi',
     FEATHERLESS: 'featherless',
     HUGGINGFACE: 'huggingface',
     GENERIC: 'generic',
@@ -50,6 +51,7 @@ const {
     INFERMATICAI,
     DREAMGEN,
     OPENROUTER,
+    AIMLAPI,
     KOBOLDCPP,
     HUGGINGFACE,
     FEATHERLESS,
@@ -115,6 +117,7 @@ export let INFERMATICAI_SERVER = 'https://api.totalgpt.ai';
 export let DREAMGEN_SERVER = 'https://dreamgen.com';
 export let OPENROUTER_SERVER = 'https://openrouter.ai/api';
 export let FEATHERLESS_SERVER = 'https://api.featherless.ai/v1';
+export let AIMLAPI_SERVER = 'https://api.aimlapi.com/v1';
 
 export const SERVER_INPUTS = {
     [textgen_types.OOBA]: '#textgenerationwebui_api_url_text',
@@ -203,6 +206,7 @@ const settings = {
     aphrodite_model: '',
     dreamgen_model: 'opus-v1-xl/text',
     tabby_model: '',
+    aimlapi_model: 'gpt-4o-mini-2024-07-18',
     sampler_order: KOBOLDCPP_ORDER,
     logit_bias: [],
     n: 1,
@@ -341,6 +345,8 @@ export function getTextGenServer(type = null) {
             return DREAMGEN_SERVER;
         case OPENROUTER:
             return OPENROUTER_SERVER;
+        case AIMLAPI:
+            return AIMLAPI_SERVER;
         default:
             return settings.server_urls[selectedType] ?? '';
     }
@@ -1193,6 +1199,8 @@ export function getTextGenModel() {
             return settings.dreamgen_model;
         case OPENROUTER:
             return settings.openrouter_model;
+        case AIMLAPI:
+            return settings.aimlapi_model;
         case VLLM:
             return settings.vllm_model;
         case APHRODITE:

@@ -227,6 +227,7 @@ export function setAdditionalHeadersByType(requestHeaders, type, server, directo
         [TEXTGEN_TYPES.LLAMACPP]: getLlamaCppHeaders,
         [TEXTGEN_TYPES.FEATHERLESS]: getFeatherlessHeaders,
         [TEXTGEN_TYPES.HUGGINGFACE]: getHuggingFaceHeaders,
+        [TEXTGEN_TYPES.AIMLAPI]: getGenericHeaders,
         [TEXTGEN_TYPES.GENERIC]: getGenericHeaders,
     };
 

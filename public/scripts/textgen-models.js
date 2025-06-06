@@ -272,6 +272,29 @@ export async function loadOpenRouterModels(data) {
     calculateOpenRouterCost();
 }
 
+export async function loadAimlapiModels(data) {
+    if (!Array.isArray(data)) {
+        console.error('Invalid AI/ML API models data', data);
+        return;
+    }
+
+    data.sort((a, b) => a.id.localeCompare(b.id));
+
+    if (!data.find(x => x.id === textgen_settings.aimlapi_model)) {
+        textgen_settings.aimlapi_model = data[0]?.id || '';
+    }
+
+    $('#aimlapi_model').empty();
+    for (const model of data) {
+        if (model.type && model.type !== 'text-completion') continue;
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.text = model.info?.name || model.id;
+        option.selected = model.id === textgen_settings.aimlapi_model;
+        $('#aimlapi_model').append(option);
+    }
+}
+
 export async function loadVllmModels(data) {
     if (!Array.isArray(data)) {
         console.error('Invalid vLLM models data', data);
@@ -630,6 +653,12 @@ function onOpenRouterModelSelect() {
     setGenerationParamsFromPreset({ max_length: model.context_length });
 }
 
+function onAimlapiModelSelect() {
+    const modelId = String($('#aimlapi_model').val());
+    textgen_settings.aimlapi_model = modelId;
+    $('#api_button_textgenerationwebui').trigger('click');
+}
+
 function onVllmModelSelect() {
     const modelId = String($('#vllm_model').val());
     textgen_settings.vllm_model = modelId;
@@ -938,6 +967,7 @@ export function initTextGenModels() {
     $('#model_dreamgen_select').on('change', onDreamGenModelSelect);
     $('#ollama_model').on('change', onOllamaModelSelect);
     $('#openrouter_model').on('change', onOpenRouterModelSelect);
+    $('#aimlapi_model').on('change', onAimlapiModelSelect);
     $('#ollama_download_model').on('click', downloadOllamaModel);
     $('#vllm_model').on('change', onVllmModelSelect);
     $('#aphrodite_model').on('change', onAphroditeModelSelect);
@@ -1001,6 +1031,12 @@ export function initTextGenModels() {
             searchInputCssClass: 'text_pole',
             width: '100%',
             templateResult: getOpenRouterModelTemplate,
+        });
+        $('#aimlapi_model').select2({
+            placeholder: t`Select a model`,
+            searchInputPlaceholder: t`Search models...`,
+            searchInputCssClass: 'text_pole',
+            width: '100%',
         });
         $('#vllm_model').select2({
             placeholder: t`Select a model`,

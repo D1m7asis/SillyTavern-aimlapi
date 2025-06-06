@@ -201,6 +201,7 @@ export const TEXTGEN_TYPES = {
     INFERMATICAI: 'infermaticai',
     DREAMGEN: 'dreamgen',
     OPENROUTER: 'openrouter',
+    AIMLAPI: 'aimlapi',
     FEATHERLESS: 'featherless',
     HUGGINGFACE: 'huggingface',
     GENERIC: 'generic',
