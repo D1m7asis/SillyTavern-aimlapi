@@ -3536,6 +3536,21 @@
                                 <option value="grok-beta">grok-beta</option>
                             </select>
                         </div>
+                        <div id="aimlapi_form" data-source="aimlapi">
+                            <h4>
+                                <span>AI/ML API Key</span>
+                            </h4>
+                            <div class="flex-container">
+                                <input id="api_key_aimlapi" name="api_key_aimlapi" class="text_pole flex1" value="" type="text" autocomplete="off">
+                                <div title="Clear your API key" data-i18n="[title]Clear your API key" class="menu_button fa-solid fa-circle-xmark clear-api-key" data-key="api_key_aimlapi"></div>
+                            </div>
+                            <div data-for="api_key_aimlapi" class="neutral_warning" data-i18n="For privacy reasons, your API key will be hidden after you reload the page.">
+                                For privacy reasons, your API key will be hidden after you reload the page.
+                            </div>
+                            <h4>AI/ML Model</h4>
+                            <select id="model_aimlapi_select">
+                            </select>
+                        </div>
                         <div id="pollinations_form" data-source="pollinations">
                             <h4 data-i18n="Pollinations Model">Pollinations Model</h4>
                             <select id="model_pollinations_select">
