@@ -74,6 +74,7 @@ const sources = {
     novel: 'novel',
     vlad: 'vlad',
     openai: 'openai',
+    aimlapi: 'aimlapi',
     comfy: 'comfy',
     togetherai: 'togetherai',
     drawthings: 'drawthings',
@@ -1180,6 +1181,10 @@ async function onFalaiKeyClick() {
     return onApiKeyClick('FALAI API Key:', SECRET_KEYS.FALAI);
 }
 
+async function onAimlapiKeyClick() {
+    return onApiKeyClick('AI/ML API Key:', SECRET_KEYS.AIMLAPI);
+}
+
 function onBflUpsamplingInput() {
     extension_settings.sd.bfl_upsampling = !!$('#sd_bfl_upsampling').prop('checked');
     saveSettingsDebounced();
@@ -1303,6 +1308,7 @@ async function onModelChange() {
         sources.horde,
         sources.novel,
         sources.openai,
+        sources.aimlapi,
         sources.togetherai,
         sources.pollinations,
         sources.stability,
@@ -1505,6 +1511,9 @@ async function loadSamplers() {
         case sources.openai:
             samplers = ['N/A'];
             break;
+        case sources.aimlapi:
+            samplers = ['N/A'];
+            break;
         case sources.comfy:
             samplers = await loadComfySamplers();
             break;
@@ -1694,6 +1703,9 @@ async function loadModels() {
             break;
         case sources.openai:
             models = await loadOpenAiModels();
+            break;
+        case sources.aimlapi:
+            models = await loadAimlapiModels();
             break;
         case sources.comfy:
             models = await loadComfyModels();
@@ -1959,6 +1971,15 @@ async function loadOpenAiModels() {
     ];
 }
 
+async function loadAimlapiModels() {
+    $('#sd_aimlapi_key').toggleClass('success', !!secret_state[SECRET_KEYS.AIMLAPI]);
+    return [
+        { value: 'gpt-image-1', text: 'gpt-image-1' },
+        { value: 'dall-e-3', text: 'dall-e-3' },
+        { value: 'dall-e-2', text: 'dall-e-2' },
+    ];
+}
+
 async function loadVladModels() {
     if (!extension_settings.sd.vlad_url) {
         return [];
@@ -2078,6 +2099,9 @@ async function loadSchedulers() {
         case sources.openai:
             schedulers = ['N/A'];
             break;
+        case sources.aimlapi:
+            schedulers = ['N/A'];
+            break;
         case sources.togetherai:
             schedulers = ['N/A'];
             break;
@@ -2167,6 +2191,9 @@ async function loadVaes() {
             vaes = ['N/A'];
             break;
         case sources.openai:
+            vaes = ['N/A'];
+            break;
+        case sources.aimlapi:
             vaes = ['N/A'];
             break;
         case sources.togetherai:
@@ -2735,15 +2762,18 @@ async function sendGenerationRequest(generationType, prompt, additionalNegativeP
             case sources.auto:
                 result = await generateAutoImage(prefixedPrompt, negativePrompt, signal);
                 break;
-            case sources.novel:
-                result = await generateNovelImage(prefixedPrompt, negativePrompt, signal);
-                break;
-            case sources.openai:
-                result = await generateOpenAiImage(prefixedPrompt, signal);
-                break;
-            case sources.comfy:
-                result = await generateComfyImage(prefixedPrompt, negativePrompt, signal);
-                break;
+        case sources.novel:
+            result = await generateNovelImage(prefixedPrompt, negativePrompt, signal);
+            break;
+        case sources.openai:
+            result = await generateOpenAiImage(prefixedPrompt, signal);
+            break;
+        case sources.aimlapi:
+            result = await generateAimlapiImage(prefixedPrompt, signal);
+            break;
+        case sources.comfy:
+            result = await generateComfyImage(prefixedPrompt, negativePrompt, signal);
+            break;
             case sources.togetherai:
                 result = await generateTogetherAIImage(prefixedPrompt, negativePrompt, signal);
                 break;
@@ -3325,6 +3355,30 @@ async function generateOpenAiImage(prompt, signal) {
     }
 }
 
+async function generateAimlapiImage(prompt, signal) {
+    const result = await fetch('/api/aimlapi/generate-image', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        signal: signal,
+        body: JSON.stringify({
+            prompt: prompt,
+            model: extension_settings.sd.model,
+            n: 1,
+            size: `${extension_settings.sd.width}x${extension_settings.sd.height}`,
+            quality: extension_settings.sd.openai_quality,
+            style: extension_settings.sd.openai_style,
+        }),
+    });
+
+    if (result.ok) {
+        const data = await result.json();
+        return { format: 'png', data: data?.data[0]?.b64_json };
+    } else {
+        const text = await result.text();
+        throw new Error(text);
+    }
+}
+
 /**
  * Generates an image in ComfyUI using the provided prompt and configuration settings.
  *
@@ -3841,6 +3895,8 @@ function isValidState() {
             return secret_state[SECRET_KEYS.NOVEL];
         case sources.openai:
             return secret_state[SECRET_KEYS.OPENAI];
+        case sources.aimlapi:
+            return secret_state[SECRET_KEYS.AIMLAPI];
         case sources.comfy:
             return true;
         case sources.togetherai:
@@ -4521,6 +4577,7 @@ jQuery(async () => {
     $('#sd_bfl_key').on('click', onBflKeyClick);
     $('#sd_bfl_upsampling').on('input', onBflUpsamplingInput);
     $('#sd_falai_key').on('click', onFalaiKeyClick);
+    $('#sd_aimlapi_key').on('click', onAimlapiKeyClick);
 
     if (!CSS.supports('field-sizing', 'content')) {
         $('.sd_settings .inline-drawer-toggle').on('click', function () {
