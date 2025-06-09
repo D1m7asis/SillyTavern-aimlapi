@@ -1973,11 +1973,24 @@ async function loadOpenAiModels() {
 
 async function loadAimlapiModels() {
     $('#sd_aimlapi_key').toggleClass('success', !!secret_state[SECRET_KEYS.AIMLAPI]);
-    return [
-        { value: 'gpt-image-1', text: 'gpt-image-1' },
-        { value: 'dall-e-3', text: 'dall-e-3' },
-        { value: 'dall-e-2', text: 'dall-e-2' },
-    ];
+
+    const result = await fetch('/api/sd/aimlapi/models', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+    });
+
+    if (!result.ok) {
+        return [];
+    }
+
+    const json = await result.json();
+
+    return (json.data || [])
+        .filter(model => model.type === 'image')
+        .map(model => ({
+            value: model.id,
+            text: model.info?.name || model.id,
+        }));
 }
 
 async function loadVladModels() {
