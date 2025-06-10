@@ -1359,7 +1359,6 @@ aimlapi.post('/models', async (request, response) => {
         }
 
         const data = await modelsResponse.json();
-        console.log('data', data);
         const models = (data.data || [])
             .filter(model =>
                 model.type === 'image' &&
