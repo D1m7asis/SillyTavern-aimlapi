@@ -289,18 +289,18 @@ export async function loadAimlapiModels(data) {
     $('#aimlapi_model').empty();
 
     const grouped = data
-      .filter(m => !m.type || m.type === 'chat-completion')
-      .reduce((acc, curr) => {
-        const vendor = curr.info.developer;
+        .filter(m => !m.type || m.type === 'chat-completion')
+        .reduce((acc, curr) => {
+            const vendor = curr.info.developer;
 
-        if (!acc.has(vendor)) {
-          acc.set(vendor, []);
-        }
+            if (!acc.has(vendor)) {
+                acc.set(vendor, []);
+            }
 
-        acc.get(vendor).push(curr);
+            acc.get(vendor).push(curr);
 
-        return acc;
-      }, new Map());
+            return acc;
+        }, new Map());
 
     grouped.forEach((models, vendor) => {
         const optgroup = $(`<optgroup label="${vendor}">`);

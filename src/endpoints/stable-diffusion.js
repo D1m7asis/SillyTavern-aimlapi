@@ -1363,11 +1363,11 @@ aimlapi.post('/models', async (request, response) => {
             .filter(model =>
                 model.type === 'image' &&
                 model.id !== 'triposr' &&
-                model.id !== 'flux/dev/image-to-image'
+                model.id !== 'flux/dev/image-to-image',
             )
             .map(model => ({
                 value: model.id,
-                text: model.info?.name || model.id
+                text: model.info?.name || model.id,
             }));
 
         return response.send({ data: models });

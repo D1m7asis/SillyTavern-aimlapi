@@ -1,4 +1,4 @@
-import {TEXTGEN_TYPES, OPENROUTER_HEADERS, FEATHERLESS_HEADERS, AIMLAPI_HEADERS} from './constants.js';
+import { TEXTGEN_TYPES, OPENROUTER_HEADERS, FEATHERLESS_HEADERS, AIMLAPI_HEADERS } from './constants.js';
 import { SECRET_KEYS, readSecret } from './endpoints/secrets.js';
 import { getConfigValue } from './util.js';
 

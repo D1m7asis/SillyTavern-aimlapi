@@ -263,7 +263,7 @@ import {
     initTextGenModels,
     loadTabbyModels,
     loadGenericModels,
-    loadAimlapiModels
+    loadAimlapiModels,
 } from './scripts/textgen-models.js';
 import { appendFileContent, hasPendingFileAttachment, populateFileAttachment, decodeStyleTags, encodeStyleTags, isExternalMediaAllowed, getCurrentEntityId, preserveNeutralChat, restoreNeutralChat, formatCreatorNotes, initChatUtilities } from './scripts/chats.js';
 import { getPresetManager, initPresetManager } from './scripts/preset-manager.js';

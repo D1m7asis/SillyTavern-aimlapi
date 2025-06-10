@@ -398,7 +398,7 @@ router.post('/generate', async function (request, response) {
                 }
             } else {
                 request.body.messages = request.body.messages.map(m =>
-                    typeof m === 'string' ? { role: 'user', content: m } : m
+                    typeof m === 'string' ? { role: 'user', content: m } : m,
                 );
             }
             delete request.body.prompt;
