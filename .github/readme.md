@@ -15,7 +15,7 @@ English | [German](readme-de_de.md) | [中文](readme-zh_cn.md) | [繁體中文]
 
 ---
 
-SillyTavern provides a single unified interface for many LLM APIs (KoboldAI/CPP, Horde, NovelAI, Ooba, Tabby, OpenAI, OpenRouter, Claude, Mistral and more), a mobile-friendly layout, Visual Novel Mode, Automatic1111 & ComfyUI API image generation integration, TTS, WorldInfo (lorebooks), customizable UI, auto-translate, more prompt options than you'd ever want or need, and endless growth potential via third-party extensions.
+SillyTavern provides a single unified interface for many LLM APIs (KoboldAI/CPP, Horde, NovelAI, Ooba, Tabby, OpenAI, OpenRouter, Claude, Mistral, **AI/ML API**, and more), a mobile-friendly layout, Visual Novel Mode, Automatic1111 & ComfyUI API image generation integration, TTS, WorldInfo (lorebooks), customizable UI, auto-translate, more prompt options than you'd ever want or need, and endless growth potential via third-party extensions.
 
 We have a [Documentation website](https://docs.sillytavern.app/) to answer most of your questions and help you get started.
 
@@ -54,6 +54,7 @@ The hardware requirements are minimal: it will run on anything that can run Node
 * [KoboldCpp](https://github.com/LostRuins/koboldcpp) - a community's favorite for running GGUF models locally
 * [tabbyAPI](https://github.com/theroyallab/tabbyAPI) - a popular, lightweight, locally-hosted exl2 inference API
 * [OpenRouter](https://openrouter.ai) - a single API for many cloud providers (OpenAI, Claude, Meta Llama, etc.) as well as popular community models.
+* [AI/ML API](https://aimlapi.com/app/?utm_source=sillytavern&utm_medium=github&utm_campaign=integration) - provides 300+ AI models including Deepseek, Gemini and ChatGPT for chat completion, text completion and image generation at enterprise-grade rate limits and uptimes.
 
 ## Questions or suggestions?
 
