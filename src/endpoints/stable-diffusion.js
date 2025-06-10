@@ -1359,9 +1359,17 @@ aimlapi.post('/models', async (request, response) => {
         }
 
         const data = await modelsResponse.json();
+        console.log('data', data);
         const models = (data.data || [])
-            .filter(model => model.type === 'image')
-            .map(model => ({ value: model.id, text: model.info?.name || model.id }));
+            .filter(model =>
+                model.type === 'image' &&
+                model.id !== 'triposr' &&
+                model.id !== 'flux/dev/image-to-image'
+            )
+            .map(model => ({
+                value: model.id,
+                text: model.info?.name || model.id
+            }));
 
         return response.send({ data: models });
     } catch (error) {
