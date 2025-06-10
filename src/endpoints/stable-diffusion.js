@@ -1334,3 +1334,47 @@ router.use('/nanogpt', nanogpt);
 router.use('/bfl', bfl);
 router.use('/falai', falai);
 router.use('/xai', xai);
+
+const aimlapi = express.Router();
+
+aimlapi.post('/models', async (request, response) => {
+    try {
+        const key = readSecret(request.user.directories, SECRET_KEYS.AIMLAPI);
+
+        if (!key) {
+            console.warn('AI/ML API key not found.');
+            return response.sendStatus(400);
+        }
+
+        const modelsResponse = await fetch('https://api.aimlapi.com/v1/models', {
+            method: 'GET',
+            headers: {
+                Authorization: `Bearer ${key}`,
+            },
+        });
+
+        if (!modelsResponse.ok) {
+            console.warn('AI/ML API returned an error.');
+            return response.sendStatus(500);
+        }
+
+        const data = await modelsResponse.json();
+        const models = (data.data || [])
+            .filter(model =>
+                model.type === 'image' &&
+                model.id !== 'triposr' &&
+                model.id !== 'flux/dev/image-to-image'
+            )
+            .map(model => ({
+                value: model.id,
+                text: model.info?.name || model.id
+            }));
+
+        return response.send({ data: models });
+    } catch (error) {
+        console.error(error);
+        return response.sendStatus(500);
+    }
+});
+
+router.use('/aimlapi', aimlapi);

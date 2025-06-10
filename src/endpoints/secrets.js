@@ -53,6 +53,7 @@ export const SECRET_KEYS = {
     GENERIC: 'api_key_generic',
     DEEPSEEK: 'api_key_deepseek',
     SERPER: 'api_key_serper',
+    AIMLAPI: 'api_key_aimlapi',
     XAI: 'api_key_xai',
 };
 

@@ -250,7 +250,21 @@ import {
 import { getBackgrounds, initBackgrounds, loadBackgroundSettings, background_settings } from './scripts/backgrounds.js';
 import { hideLoader, showLoader } from './scripts/loader.js';
 import { BulkEditOverlay, CharacterContextMenu } from './scripts/BulkEditOverlay.js';
-import { loadFeatherlessModels, loadMancerModels, loadOllamaModels, loadTogetherAIModels, loadInfermaticAIModels, loadOpenRouterModels, loadVllmModels, loadAphroditeModels, loadDreamGenModels, initTextGenModels, loadTabbyModels, loadGenericModels } from './scripts/textgen-models.js';
+import {
+    loadFeatherlessModels,
+    loadMancerModels,
+    loadOllamaModels,
+    loadTogetherAIModels,
+    loadInfermaticAIModels,
+    loadOpenRouterModels,
+    loadVllmModels,
+    loadAphroditeModels,
+    loadDreamGenModels,
+    initTextGenModels,
+    loadTabbyModels,
+    loadGenericModels,
+    loadAimlapiModels
+} from './scripts/textgen-models.js';
 import { appendFileContent, hasPendingFileAttachment, populateFileAttachment, decodeStyleTags, encodeStyleTags, isExternalMediaAllowed, getCurrentEntityId, preserveNeutralChat, restoreNeutralChat, formatCreatorNotes, initChatUtilities } from './scripts/chats.js';
 import { getPresetManager, initPresetManager } from './scripts/preset-manager.js';
 import { evaluateMacros, getLastMessageId, initMacros } from './scripts/macros.js';
@@ -1274,6 +1288,9 @@ async function getStatusTextgen() {
         } else if (textgen_settings.type === textgen_types.OPENROUTER) {
             loadOpenRouterModels(data?.data);
             setOnlineStatus(textgen_settings.openrouter_model);
+        } else if (textgen_settings.type === textgen_types.AIMLAPI) {
+            loadAimlapiModels(data?.data);
+            setOnlineStatus(textgen_settings.aimlapi_model);
         } else if (textgen_settings.type === textgen_types.VLLM) {
             loadVllmModels(data?.data);
             setOnlineStatus(textgen_settings.vllm_model);
@@ -6027,7 +6044,11 @@ export function extractMessageFromData(data, activeApi = null) {
         case 'koboldhorde':
             return data.text;
         case 'textgenerationwebui':
-            return data.choices?.[0]?.text ?? data.content ?? data.response ?? '';
+            return data.choices?.[0]?.text
+                ?? data.choices?.[0]?.message?.content
+                ?? data.content
+                ?? data.response
+                ?? '';
         case 'novel':
             return data.output;
         case 'openai':

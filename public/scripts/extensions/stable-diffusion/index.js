@@ -74,6 +74,7 @@ const sources = {
     novel: 'novel',
     vlad: 'vlad',
     openai: 'openai',
+    aimlapi: 'aimlapi',
     comfy: 'comfy',
     togetherai: 'togetherai',
     drawthings: 'drawthings',
@@ -1180,6 +1181,10 @@ async function onFalaiKeyClick() {
     return onApiKeyClick('FALAI API Key:', SECRET_KEYS.FALAI);
 }
 
+async function onAimlapiKeyClick() {
+    return onApiKeyClick('AI/ML API Key:', SECRET_KEYS.AIMLAPI);
+}
+
 function onBflUpsamplingInput() {
     extension_settings.sd.bfl_upsampling = !!$('#sd_bfl_upsampling').prop('checked');
     saveSettingsDebounced();
@@ -1303,6 +1308,7 @@ async function onModelChange() {
         sources.horde,
         sources.novel,
         sources.openai,
+        sources.aimlapi,
         sources.togetherai,
         sources.pollinations,
         sources.stability,
@@ -1505,6 +1511,9 @@ async function loadSamplers() {
         case sources.openai:
             samplers = ['N/A'];
             break;
+        case sources.aimlapi:
+            samplers = ['N/A'];
+            break;
         case sources.comfy:
             samplers = await loadComfySamplers();
             break;
@@ -1694,6 +1703,9 @@ async function loadModels() {
             break;
         case sources.openai:
             models = await loadOpenAiModels();
+            break;
+        case sources.aimlapi:
+            models = await loadAimlapiModels();
             break;
         case sources.comfy:
             models = await loadComfyModels();
@@ -1959,6 +1971,23 @@ async function loadOpenAiModels() {
     ];
 }
 
+async function loadAimlapiModels() {
+    $('#sd_aimlapi_key').toggleClass('success', !!secret_state[SECRET_KEYS.AIMLAPI]);
+
+    const result = await fetch('/api/sd/aimlapi/models', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+    });
+
+    if (!result.ok) {
+        return [];
+    }
+
+    const json = await result.json();
+
+    return (json.data || [])
+}
+
 async function loadVladModels() {
     if (!extension_settings.sd.vlad_url) {
         return [];
@@ -2078,6 +2107,9 @@ async function loadSchedulers() {
         case sources.openai:
             schedulers = ['N/A'];
             break;
+        case sources.aimlapi:
+            schedulers = ['N/A'];
+            break;
         case sources.togetherai:
             schedulers = ['N/A'];
             break;
@@ -2167,6 +2199,9 @@ async function loadVaes() {
             vaes = ['N/A'];
             break;
         case sources.openai:
+            vaes = ['N/A'];
+            break;
+        case sources.aimlapi:
             vaes = ['N/A'];
             break;
         case sources.togetherai:
@@ -2735,15 +2770,18 @@ async function sendGenerationRequest(generationType, prompt, additionalNegativeP
             case sources.auto:
                 result = await generateAutoImage(prefixedPrompt, negativePrompt, signal);
                 break;
-            case sources.novel:
-                result = await generateNovelImage(prefixedPrompt, negativePrompt, signal);
-                break;
-            case sources.openai:
-                result = await generateOpenAiImage(prefixedPrompt, signal);
-                break;
-            case sources.comfy:
-                result = await generateComfyImage(prefixedPrompt, negativePrompt, signal);
-                break;
+        case sources.novel:
+            result = await generateNovelImage(prefixedPrompt, negativePrompt, signal);
+            break;
+        case sources.openai:
+            result = await generateOpenAiImage(prefixedPrompt, signal);
+            break;
+        case sources.aimlapi:
+            result = await generateAimlapiImage(prefixedPrompt, signal);
+            break;
+        case sources.comfy:
+            result = await generateComfyImage(prefixedPrompt, negativePrompt, signal);
+            break;
             case sources.togetherai:
                 result = await generateTogetherAIImage(prefixedPrompt, negativePrompt, signal);
                 break;
@@ -3326,6 +3364,104 @@ async function generateOpenAiImage(prompt, signal) {
 }
 
 /**
+ * Universal image generation via AIMLAPI:
+ * - Builds the right request body for any model (OpenAI vs SD/Flux/Recraft).
+ * - Extracts the URL or base64 response.
+ * - If it’s a URL, fetches the image and converts to base64.
+ * - Returns { format: 'png', data: '<base64 string>' }, ready for saveBase64AsFile().
+ */
+async function generateAimlapiImage(prompt, signal) {
+  // 1) Normalize UI model name → real AIMLAPI ID
+  const uiModel = extension_settings.sd.model;
+  const aliasMap = {
+    "imagegen 3.0":        "imagen-3.0-generate-002",
+    "flux/dev i2i":        "flux/dev/image-to-image",
+    // добавьте сюда другие UI-алиасы при необходимости
+  };
+  const model = aliasMap[uiModel.toLowerCase()] ?? uiModel;
+
+  // 2) Decide which params this model supports
+  const m = model.toLowerCase();
+  const isSdLike =
+    m.startsWith("flux/") ||
+    m.startsWith("stable") ||
+    m === "recraft-v3" ||
+    m === "triposr";
+
+  // 3) Build request body
+  const body = { prompt, model };
+  if (isSdLike) {
+    // SD-style models: use steps/guidance/width/height/seed
+    body.steps    = clamp(extension_settings.sd.steps, 1, 50);
+    body.guidance = clamp(extension_settings.sd.scale, 1.5, 5);
+    body.width    = clamp(extension_settings.sd.width,  256, 1440);
+    body.height   = clamp(extension_settings.sd.height, 256, 1440);
+    if (extension_settings.sd.seed >= 0) {
+      body.seed = extension_settings.sd.seed;
+    }
+  } else {
+    // DALL·E/Imagen-style models: use n/size/quality/style
+    body.n       = 1;
+    body.size    = `${extension_settings.sd.width}x${extension_settings.sd.height}`;
+    body.quality = extension_settings.sd.openai_quality;
+    body.style   = extension_settings.sd.openai_style;
+  }
+
+  // 4) Fetch from your backend endpoint
+  const res = await fetch("/api/aimlapi/generate-image", {
+    method: "POST",
+    headers: getRequestHeaders(),
+    signal,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  const json = await res.json();
+
+  // 5) Pull out the image object (Flux uses json.images, OpenAI uses json.data)
+  const imgObj =
+    Array.isArray(json.images) && json.images[0] ? json.images[0]
+      : Array.isArray(json.data)   && json.data[0]   ? json.data[0]
+      : null;
+  if (!imgObj) {
+    throw new Error("Endpoint did not return image data.");
+  }
+
+  // 6) Convert to base64 for saveBase64AsFile()
+  let base64;
+  if (imgObj.b64_json || imgObj.base64) {
+    base64 = imgObj.b64_json ?? imgObj.base64;
+  } else if (model === 'imagen-3.0-generate-002') {
+    base64 = imgObj.url
+  } else if (imgObj.url) {
+    // browser-side fetch+FileReader
+    const resp2 = await fetch(imgObj.url);
+    if (!resp2.ok) throw new Error("Failed to fetch generated image URL");
+    const blob = await resp2.blob();
+    base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        // reader.result === "data:image/png;base64,AAAA..."
+        const parts = (reader.result || "").split(",");
+        resolve(parts[1] || "");
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } else {
+    throw new Error("Unsupported image format from AIMLAPI");
+  }
+
+  // 7) Return exactly what your downstream code needs:
+  //    { format: 'png', data: '<base64>' }
+  return {
+    format: "png",
+    data:   base64,
+  };
+}
+
+/**
  * Generates an image in ComfyUI using the provided prompt and configuration settings.
  *
  * @param {string} prompt - The main instruction used to guide the image generation.
@@ -3841,6 +3977,8 @@ function isValidState() {
             return secret_state[SECRET_KEYS.NOVEL];
         case sources.openai:
             return secret_state[SECRET_KEYS.OPENAI];
+        case sources.aimlapi:
+            return secret_state[SECRET_KEYS.AIMLAPI];
         case sources.comfy:
             return true;
         case sources.togetherai:
@@ -4521,6 +4659,7 @@ jQuery(async () => {
     $('#sd_bfl_key').on('click', onBflKeyClick);
     $('#sd_bfl_upsampling').on('input', onBflUpsamplingInput);
     $('#sd_falai_key').on('click', onFalaiKeyClick);
+    $('#sd_aimlapi_key').on('click', onAimlapiKeyClick);
 
     if (!CSS.supports('field-sizing', 'content')) {
         $('.sd_settings .inline-drawer-toggle').on('click', function () {

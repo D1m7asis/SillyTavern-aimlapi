@@ -177,6 +177,7 @@ export const CHAT_COMPLETION_SOURCES = {
     ZEROONEAI: '01ai',
     NANOGPT: 'nanogpt',
     DEEPSEEK: 'deepseek',
+    AIMLAPI: 'aimlapi',
     XAI: 'xai',
     POLLINATIONS: 'pollinations',
 };
@@ -188,6 +189,7 @@ export const UPLOADS_DIRECTORY = '_uploads';
 
 // TODO: this is copied from the client code; there should be a way to de-duplicate it eventually
 export const TEXTGEN_TYPES = {
+    AIMLAPI: 'aimlapi',
     OOBA: 'ooba',
     MANCER: 'mancer',
     VLLM: 'vllm',
@@ -330,6 +332,11 @@ export const AVATAR_WIDTH = 512;
 export const AVATAR_HEIGHT = 768;
 
 export const OPENROUTER_HEADERS = {
+    'HTTP-Referer': 'https://sillytavern.app',
+    'X-Title': 'SillyTavern',
+};
+
+export const AIMLAPI_HEADERS = {
     'HTTP-Referer': 'https://sillytavern.app',
     'X-Title': 'SillyTavern',
 };
