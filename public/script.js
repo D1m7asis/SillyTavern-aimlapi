@@ -10,7 +10,6 @@ import {
     SVGInject,
     Popper,
     initLibraryShims,
-    slideToggle,
     default as libs,
 } from './lib.js';
 
@@ -297,6 +296,7 @@ import { getContext } from './scripts/st-context.js';
 import { extractReasoningFromData, initReasoning, parseReasoningInSwipes, PromptReasoning, ReasoningHandler, removeReasoningFromString, updateReasoningUI } from './scripts/reasoning.js';
 import { accountStorage } from './scripts/util/AccountStorage.js';
 import { initWelcomeScreen, openPermanentAssistantChat, openPermanentAssistantCard, getPermanentAssistantAvatar } from './scripts/welcome-screen.js';
+import { initDataMaid } from './scripts/data-maid.js';
 
 // API OBJECT FOR EXTERNAL WIRING
 globalThis.SillyTavern = {
@@ -784,21 +784,6 @@ async function getSystemMessages() {
     };
 }
 
-// Register configuration migrations
-registerPromptManagerMigration();
-
-$(document).ajaxError(function myErrorHandler(_, xhr) {
-    // Cohee: CSRF doesn't error out in multiple tabs anymore, so this is unnecessary
-    /*
-    if (xhr.status == 403) {
-        toastr.warning(
-            'doubleCsrf errors in console are NORMAL in this case. If you want to run ST in multiple tabs, start the server with --disableCsrf option.',
-            'Looks like you\'ve opened SillyTavern in another browser tab',
-            { timeOut: 0, extendedTimeOut: 0, preventDuplicates: true },
-        );
-    } */
-});
-
 async function getClientVersion() {
     try {
         const response = await fetch('/version');
@@ -879,7 +864,8 @@ export let create_save = {
     creator: '',
     personality: '',
     first_message: '',
-    avatar: '',
+    /** @type {FileList|null} */
+    avatar: null,
     scenario: '',
     mes_example: '',
     world: '',
@@ -996,6 +982,8 @@ async function firstLoadInit() {
     }
 
     showLoader();
+    registerPromptManagerMigration();
+    initStandaloneMode();
     initLibraryShims();
     addShowdownPatch(showdown);
     reloadMarkdownProcessor();
@@ -1040,6 +1028,7 @@ async function firstLoadInit() {
     initWelcomeScreen();
     await initScrapers();
     initCustomSelectedSamplers();
+    initDataMaid();
     addDebugFunctions();
     doDailyExtensionUpdatesCheck();
     await hideLoader();
@@ -1051,6 +1040,13 @@ async function fixViewport() {
     document.body.style.position = 'absolute';
     await delay(1);
     document.body.style.position = '';
+}
+
+function initStandaloneMode() {
+    const isPwaMode = window.matchMedia('(display-mode: standalone)').matches;
+    if (isPwaMode) {
+        $('body').addClass('PWA');
+    }
 }
 
 function cancelStatusCheck(reason = 'Manually cancelled status check') {
@@ -1411,7 +1407,6 @@ export function resultCheckStatus() {
     displayOnlineStatus();
     stopStatusLoading();
 }
-
 
 /**
  * Switches the currently selected character to the one with the given ID. (character index, not the character key!)
@@ -1895,6 +1890,52 @@ async function delChat(chatfile) {
         }
         await eventSource.emit(event_types.CHAT_DELETED, name);
     }
+}
+
+/**
+ * Deletes a character chat by its name.
+ * @param {string} characterId Character ID to delete chat for
+ * @param {string} fileName Name of the chat file to delete (without .jsonl extension)
+ * @returns {Promise<void>} A promise that resolves when the chat is deleted.
+ */
+export async function deleteCharacterChatByName(characterId, fileName) {
+    // Make sure all the data is loaded.
+    await unshallowCharacter(characterId);
+
+    /** @type {import('./scripts/char-data.js').v1CharData} */
+    const character = characters[characterId];
+    if (!character) {
+        console.warn(`Character with ID ${characterId} not found.`);
+        return;
+    }
+
+    const response = await fetch('/api/chats/delete', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({
+            chatfile: `${fileName}.jsonl`,
+            avatar_url: character.avatar,
+        }),
+    });
+
+    if (!response.ok) {
+        console.error('Failed to delete chat for character.');
+        return;
+    }
+
+    if (fileName === character.chat) {
+        const chatsResponse = await fetch('/api/characters/chats', {
+            method: 'POST',
+            headers: getRequestHeaders(),
+            body: JSON.stringify({ avatar_url: character.avatar }),
+        });
+        const chats = Object.values(await chatsResponse.json());
+        chats.sort((a, b) => sortMoments(timestampToMoment(a.last_mes), timestampToMoment(b.last_mes)));
+        const newChatName = chats.length && typeof chats[0] === 'object' ? chats[0].file_name.replace('.jsonl', '') : `${character.name} - ${humanizedDateTime()}`;
+        await updateRemoteChatName(characterId, newChatName);
+    }
+
+    await eventSource.emit(event_types.CHAT_DELETED, fileName);
 }
 
 export async function replaceCurrentChat() {
@@ -2408,7 +2449,7 @@ export function appendMediaToMessage(mes, messageElement, adjustScroll = true) {
         const image = messageElement.find('.mes_img');
         const text = messageElement.find('.mes_text');
         const isInline = !!mes.extra?.inline_image;
-        image.off('load').on('load', function () {
+        const doAdjustScroll = () => {
             if (!adjustScroll) {
                 return;
             }
@@ -2416,6 +2457,16 @@ export function appendMediaToMessage(mes, messageElement, adjustScroll = true) {
             const newChatHeight = $('#chat').prop('scrollHeight');
             const diff = newChatHeight - chatHeight;
             $('#chat').scrollTop(scrollPosition + diff);
+        };
+        image.off('load').on('load', function () {
+            image.removeAttr('alt');
+            image.removeClass('error');
+            doAdjustScroll();
+        });
+        image.off('error').on('error', function () {
+            image.attr('alt', '');
+            image.addClass('error');
+            doAdjustScroll();
         });
         image.attr('src', mes.extra?.image);
         image.attr('title', mes.extra?.title || mes.title || '');
@@ -2440,6 +2491,31 @@ export function appendMediaToMessage(mes, messageElement, adjustScroll = true) {
                 eventSource.emit(event_types.IMAGE_SWIPED, { message: mes, element: messageElement, direction: 'right' });
             });
         }
+    }
+
+    // Add video to message
+    if (mes.extra?.video) {
+        const container = messageElement.find('.mes_block');
+        const chatHeight = $('#chat').prop('scrollHeight');
+
+        // Create video element if it doesn't exist
+        let video = messageElement.find('.mes_video');
+        if (video.length === 0) {
+            video = $('<video class="mes_video" controls preload="metadata"></video>');
+            container.append(video);
+        }
+
+        video.off('loadedmetadata').on('loadedmetadata', function () {
+            if (!adjustScroll) {
+                return;
+            }
+            const scrollPosition = $('#chat').scrollTop();
+            const newChatHeight = $('#chat').prop('scrollHeight');
+            const diff = newChatHeight - chatHeight;
+            $('#chat').scrollTop(scrollPosition + diff);
+        });
+
+        video.attr('src', mes.extra?.video);
     }
 
     // Add file to message
@@ -3537,7 +3613,7 @@ class StreamingProcessor {
         }
 
         if (this.image) {
-            await processImageAttachment(chat[messageId], { imageUrl: this.image, parsedImage: null });
+            await processImageAttachment(chat[messageId], { imageUrl: this.image });
             appendMediaToMessage(chat[messageId], $(this.messageDom));
         }
 
@@ -3695,6 +3771,7 @@ export async function generateRaw(prompt, api, instructOverride, quietToLoud, sy
         if (responseLengthCustomized) {
             TempResponseLength.save(api, responseLength);
         }
+        /** @type {object|any[]} */
         let generateData = {};
 
         switch (api) {
@@ -6284,17 +6361,11 @@ export function cleanUpMessage({ getMessage, isImpersonate, isContinue, displayI
  * Adds an image to the message.
  * @param {object} message Message object
  * @param {object} sources Image sources
- * @param {ParsedImage} [sources.parsedImage] Parsed image
  * @param {string} [sources.imageUrl] Image URL
  *
  * @returns {Promise<void>}
  */
-async function processImageAttachment(message, { parsedImage, imageUrl }) {
-    if (parsedImage?.image) {
-        saveImageToMessage(parsedImage, message);
-        return;
-    }
-
+async function processImageAttachment(message, { imageUrl }) {
     if (!imageUrl) {
         return;
     }
@@ -6353,8 +6424,6 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
 
     let oldMessage = '';
     const generationFinished = new Date();
-    const parsedImage = extractImageFromMessage(getMessage);
-    getMessage = parsedImage.getMessage;
     if (type === 'swipe') {
         oldMessage = chat[chat.length - 1]['mes'];
         chat[chat.length - 1]['swipes'].length++;
@@ -6368,7 +6437,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
             chat[chat.length - 1]['extra']['model'] = getGeneratingModel();
             chat[chat.length - 1]['extra']['reasoning'] = reasoning;
             chat[chat.length - 1]['extra']['reasoning_duration'] = null;
-            await processImageAttachment(chat[chat.length - 1], { parsedImage, imageUrl });
+            await processImageAttachment(chat[chat.length - 1], { imageUrl });
             if (power_user.message_token_count_enabled) {
                 const tokenCountText = (reasoning || '') + chat[chat.length - 1]['mes'];
                 chat[chat.length - 1]['extra']['token_count'] = await getTokenCountAsync(tokenCountText, 0);
@@ -6392,7 +6461,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         chat[chat.length - 1]['extra']['model'] = getGeneratingModel();
         chat[chat.length - 1]['extra']['reasoning'] = reasoning;
         chat[chat.length - 1]['extra']['reasoning_duration'] = null;
-        await processImageAttachment(chat[chat.length - 1], { parsedImage, imageUrl });
+        await processImageAttachment(chat[chat.length - 1], { imageUrl });
         if (power_user.message_token_count_enabled) {
             const tokenCountText = (reasoning || '') + chat[chat.length - 1]['mes'];
             chat[chat.length - 1]['extra']['token_count'] = await getTokenCountAsync(tokenCountText, 0);
@@ -6412,7 +6481,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
         chat[chat.length - 1]['extra']['api'] = getGeneratingApi();
         chat[chat.length - 1]['extra']['model'] = getGeneratingModel();
         chat[chat.length - 1]['extra']['reasoning'] += reasoning;
-        await processImageAttachment(chat[chat.length - 1], { parsedImage, imageUrl });
+        await processImageAttachment(chat[chat.length - 1], { imageUrl });
         // We don't know if the reasoning duration extended, so we don't update it here on purpose.
         if (power_user.message_token_count_enabled) {
             const tokenCountText = (reasoning || '') + chat[chat.length - 1]['mes'];
@@ -6458,7 +6527,7 @@ export async function saveReply({ type, getMessage, fromStreaming = false, title
             chat[chat.length - 1]['extra']['gen_id'] = group_generation_id;
         }
 
-        await processImageAttachment(chat[chat.length - 1], { parsedImage, imageUrl: imageUrl });
+        await processImageAttachment(chat[chat.length - 1], { imageUrl });
         const chat_id = (chat.length - 1);
 
         !fromStreaming && await eventSource.emit(event_types.MESSAGE_RECEIVED, chat_id, type);
@@ -6673,15 +6742,6 @@ function getGeneratingModel(mes) {
             break;
     }
     return model;
-}
-
-function extractImageFromMessage(getMessage) {
-    const regex = /<img src="(.*?)".*?alt="(.*?)".*?>/g;
-    const results = regex.exec(getMessage);
-    const image = results ? results[1] : '';
-    const title = results ? results[2] : '';
-    getMessage = getMessage.replace(regex, '');
-    return { getMessage, image, title, inline: true };
 }
 
 /**
@@ -7094,6 +7154,11 @@ export async function saveChat({ chatName, withMetadata, mesId, force = false } 
     }
 }
 
+/**
+ * Processes the avatar image from the input element, allowing the user to crop it if necessary.
+ * @param {HTMLInputElement} input - The input element containing the avatar file.
+ * @returns {Promise<void>}
+ */
 async function read_avatar_load(input) {
     if (input.files && input.files[0]) {
         if (selected_button == 'create') {
@@ -7125,7 +7190,7 @@ async function read_avatar_load(input) {
         await createOrEditCharacter();
         await delay(DEFAULT_SAVE_EDIT_TIMEOUT);
 
-        const formData = new FormData($('#form_create').get(0));
+        const formData = new FormData(/** @type {HTMLFormElement} */($('#form_create').get(0)));
         await fetch(getThumbnailUrl('avatar', formData.get('avatar_url')), {
             method: 'GET',
             cache: 'no-cache',
@@ -7135,22 +7200,21 @@ async function read_avatar_load(input) {
             },
         });
 
-        $('.mes').each(async function () {
-            const nameMatch = $(this).attr('ch_name') == formData.get('ch_name');
-            if ($(this).attr('is_system') == 'true' && !nameMatch) {
-                return;
-            }
-            if ($(this).attr('is_user') == 'true') {
-                return;
-            }
+        const messages = $('.mes').toArray();
+        for (const el of messages) {
+            const $el = $(el);
+            const nameMatch = $el.attr('ch_name') == formData.get('ch_name');
+            if ($el.attr('is_system') == 'true' && !nameMatch) continue;
+            if ($el.attr('is_user') == 'true') continue;
+
             if (nameMatch) {
                 const previewSrc = $('#avatar_load_preview').attr('src');
-                const avatar = $(this).find('.avatar img');
+                const avatar = $el.find('.avatar img');
                 avatar.attr('src', default_avatar);
                 await delay(1);
                 avatar.attr('src', previewSrc);
             }
-        });
+        }
 
         console.log('Avatar refreshed');
     }
@@ -8000,7 +8064,7 @@ export async function getChatsFromFiles(data, isGroupChat) {
  * response is an object with an `error` property set to `true`.
  */
 export async function getPastCharacterChats(characterId = null) {
-    characterId = characterId ?? this_chid;
+    characterId = characterId ?? parseInt(this_chid);
     if (!characters[characterId]) return [];
 
     const response = await fetch('/api/characters/chats', {
@@ -8067,9 +8131,7 @@ export async function displayPastChats() {
     // UX convenience: Focus the search field when the Manage Chat Files view opens.
     setTimeout(function () {
         const textSearchElement = $('#select_chat_search');
-        textSearchElement.click();
-        textSearchElement.focus();
-        textSearchElement.select();  // select content (if any) for easy erasing
+        textSearchElement.trigger('click').trigger('focus').trigger('select');
     }, 200);
 }
 
@@ -8336,11 +8398,10 @@ function select_rm_create({ switchMenu = true } = {}) {
     switchMenu && setMenuType('create');
 
     //console.log('select_rm_Create() -- selected button: '+selected_button);
-    if (selected_button == 'create') {
-        if (create_save.avatar != '') {
-            $('#add_avatar_button').get(0).files = create_save.avatar;
-            read_avatar_load($('#add_avatar_button').get(0));
-        }
+    if (selected_button == 'create' && create_save.avatar) {
+        const addAvatarInput = /** @type {HTMLInputElement} */ ($('#add_avatar_button').get(0));
+        addAvatarInput.files = create_save.avatar;
+        read_avatar_load(addAvatarInput);
     }
 
     switchMenu && selectRightMenuWithAnimation('rm_ch_create_block');
@@ -8466,11 +8527,18 @@ export function updateChatMetadata(newValues, reset) {
     chat_metadata = reset ? { ...newValues } : { ...chat_metadata, ...newValues };
 }
 
+
+/**
+ * Updates the state of the favorite button based on the provided state.
+ * @param {boolean} state Whether the favorite button should be on or off.
+ */
 function updateFavButtonState(state) {
+    // Update global state of the flag
+    // TODO: This is bad and needs to be refactored.
     fav_ch_checked = state;
-    $('#fav_checkbox').val(fav_ch_checked);
-    $('#favorite_button').toggleClass('fav_on', fav_ch_checked);
-    $('#favorite_button').toggleClass('fav_off', !fav_ch_checked);
+    $('#fav_checkbox').prop('checked', state);
+    $('#favorite_button').toggleClass('fav_on', state);
+    $('#favorite_button').toggleClass('fav_off', !state);
 }
 
 export async function setScenarioOverride() {
@@ -8587,7 +8655,7 @@ export function showSwipeButtons() {
 
     //had to add this to make the swipe counter work
     //(copied from the onclick functions for swipe buttons..
-    //don't know why the array isn't set for non-swipe messsages in Generate or addOneMessage..)
+    //don't know why the array isn't set for non-swipe messages in Generate or addOneMessage..)
     if (chat[chat.length - 1]['swipe_id'] === undefined) {              // if there is no swipe-message in the last spot of the chat array
         chat[chat.length - 1]['swipe_id'] = 0;                        // set it to id 0
         chat[chat.length - 1]['swipes'] = [];                         // empty the array
@@ -8786,7 +8854,7 @@ function updateEditArrowClasses() {
 export function closeMessageEditor(what = 'all') {
     if (what === 'message' || what === 'all') {
         if (this_edit_mes_id) {
-            $(`#chat .mes[mesid="${this_edit_mes_id}"] .mes_edit_cancel`).click();
+            $(`#chat .mes[mesid="${this_edit_mes_id}"] .mes_edit_cancel`).trigger('click');
         }
     }
     if (what === 'reasoning' || what === 'all') {
@@ -8875,7 +8943,8 @@ function openCharacterWorldPopup() {
     }
 
     function onExtraWorldInfoChanged() {
-        const selectedWorlds = $('.character_extra_world_info_selector').val();
+        const selectorFieldValue = $('.character_extra_world_info_selector').val();
+        const selectedWorlds = Array.isArray(selectorFieldValue) ? selectorFieldValue : [];
         let charLore = world_info.charLore ?? [];
 
         // TODO: Maybe make this utility function not use the window context?
@@ -8920,7 +8989,7 @@ function openCharacterWorldPopup() {
     // Apped to base dropdown
     world_names.forEach((item, i) => {
         const option = document.createElement('option');
-        option.value = i;
+        option.value = String(i);
         option.innerText = item;
         option.selected = item === worldId;
         select.append(option);
@@ -8932,7 +9001,7 @@ function openCharacterWorldPopup() {
     }
     world_names.forEach((item, i) => {
         const option = document.createElement('option');
-        option.value = i;
+        option.value = String(i);
         option.innerText = item;
 
         const existingCharLore = world_info.charLore?.find((e) => e.name === getCharaFilename());
@@ -9038,7 +9107,7 @@ function addAlternateGreeting(template, greeting, index, getArray, popup) {
  */
 async function createOrEditCharacter(e) {
     $('#rm_info_avatar').html('');
-    const formData = new FormData($('#form_create').get(0));
+    const formData = new FormData(/** @type {HTMLFormElement} */($('#form_create').get(0)));
     formData.set('fav', String(fav_ch_checked));
     const isNewChat = e instanceof CustomEvent && e.type === 'newChat';
 
@@ -9120,7 +9189,7 @@ async function createOrEditCharacter(e) {
 
             $('#character_popup-button-h3').text('Create character');
 
-            create_save.avatar = '';
+            create_save.avatar = null;
 
             $('#add_avatar_button').replaceWith(
                 $('#add_avatar_button').val('').clone(true),
@@ -9369,13 +9438,13 @@ export function swipe_left(_event, { source, repeated } = {}) {
 
 /**
  * Handles the swipe to the right event.
- * @param {JQuery.Event} _event Event.
+ * @param {JQuery.Event} [_event] Event.
  * @param {object} params Additional parameters.
  * @param {string} [params.source] The source of the swipe event.
  * @param {boolean} [params.repeated] Is the swipe event repeated.
  */
 //MARK: swipe_right
-export function swipe_right(_event, { source, repeated } = {}) {
+export function swipe_right(_event = null, { source, repeated } = {}) {
     if (chat.length - 1 === Number(this_edit_mes_id)) {
         closeMessageEditor();
     }
@@ -9387,6 +9456,7 @@ export function swipe_right(_event, { source, repeated } = {}) {
     // Make sure ad-hoc changes to extras are saved before swiping away
     syncMesToSwipe();
 
+    const isPristine = !chat_metadata?.tainted;
     const swipe_duration = 200;
     const swipe_range = 700;
     //console.log(swipe_range);
@@ -9405,14 +9475,16 @@ export function swipe_right(_event, { source, repeated } = {}) {
         };
         //assign swipe info array with last message from chat
     }
-    if (chat.length === 1 && chat[0]['swipe_id'] !== undefined && chat[0]['swipe_id'] === chat[0]['swipes'].length - 1) {    // if swipe_right is called on the last alternate greeting, loop back around
+    // if swipe_right is called on the last alternate greeting in pristine chats, loop back around
+    if (chat.length === 1 && chat[0]['swipe_id'] !== undefined && chat[0]['swipe_id'] === chat[0]['swipes'].length - 1 && isPristine) {
         chat[0]['swipe_id'] = 0;
     } else {
         // If the user is holding down the key and we're at the last swipe, don't do anything
         if (source === 'keyboard' && repeated && chat[chat.length - 1].swipe_id === chat[chat.length - 1].swipes.length - 1) {
             return;
         }
-        chat[chat.length - 1]['swipe_id']++;                                // make new slot in array
+        // make new slot in array
+        chat[chat.length - 1]['swipe_id']++;
     }
     if (chat[chat.length - 1].extra) {
         // if message has memory attached - remove it to allow regen
@@ -9427,8 +9499,8 @@ export function swipe_right(_event, { source, repeated } = {}) {
     if (!Array.isArray(chat[chat.length - 1]['swipe_info'])) {
         chat[chat.length - 1]['swipe_info'] = [];
     }
-    //console.log(chat[chat.length-1]['swipes']);
-    if (parseInt(chat[chat.length - 1]['swipe_id']) === chat[chat.length - 1]['swipes'].length && chat.length !== 1) { //if swipe id of last message is the same as the length of the 'swipes' array and not the greeting
+    //if swipe id of last message is the same as the length of the 'swipes' array and not the greeting
+    if (parseInt(chat[chat.length - 1]['swipe_id']) === chat[chat.length - 1]['swipes'].length && (chat.length !== 1 || !isPristine)) {
         delete chat[chat.length - 1].gen_started;
         delete chat[chat.length - 1].gen_finished;
         run_generate = true;
@@ -10006,16 +10078,21 @@ async function doRenameChat(_, chatName) {
 }
 
 /**
- * Renames the currently selected chat.
- * @param {string} oldFileName Old name of the chat (no JSONL extension)
- * @param {string} newName New name for the chat (no JSONL extension)
+ * Renames a group or character chat.
+ * @param {object} param Parameters for renaming chat
+ * @param {string} [param.characterId] Character ID to rename chat for
+ * @param {string} [param.groupId] Group ID to rename chat for
+ * @param {string} param.oldFileName Old name of the chat (no JSONL extension)
+ * @param {string} param.newFileName New name for the chat (no JSONL extension)
+ * @param {boolean} [param.loader=true] Whether to show loader during the operation
  */
-export async function renameChat(oldFileName, newName) {
+export async function renameGroupOrCharacterChat({ characterId, groupId, oldFileName, newFileName, loader }) {
+    const currentChatId = getCurrentChatId();
     const body = {
-        is_group: !!selected_group,
-        avatar_url: characters[this_chid]?.avatar,
+        is_group: !!groupId,
+        avatar_url: characters[characterId]?.avatar,
         original_file: `${oldFileName}.jsonl`,
-        renamed_file: `${newName.trim()}.jsonl`,
+        renamed_file: `${newFileName.trim()}.jsonl`,
     };
 
     if (body.original_file === body.renamed_file) {
@@ -10028,7 +10105,8 @@ export async function renameChat(oldFileName, newName) {
     }
 
     try {
-        showLoader();
+        loader && showLoader();
+
         const response = await fetch('/api/chats/rename', {
             method: 'POST',
             body: JSON.stringify(body),
@@ -10046,27 +10124,69 @@ export async function renameChat(oldFileName, newName) {
         }
 
         if (data.sanitizedFileName) {
-            newName = data.sanitizedFileName;
+            newFileName = data.sanitizedFileName;
         }
 
-        if (selected_group) {
-            await renameGroupChat(selected_group, oldFileName, newName);
+        if (groupId) {
+            await renameGroupChat(groupId, oldFileName, newFileName);
         }
-        else {
-            if (characters[this_chid].chat == oldFileName) {
-                characters[this_chid].chat = newName;
-                $('#selected_chat_pole').val(characters[this_chid].chat);
-                await createOrEditCharacter();
-            }
+        else if (characterId !== undefined && String(characterId) === String(this_chid) && characters[characterId]?.chat === oldFileName) {
+            characters[characterId].chat = newFileName;
+            $('#selected_chat_pole').val(characters[characterId].chat);
+            await createOrEditCharacter();
         }
 
-        await reloadCurrentChat();
+        if (currentChatId) {
+            await reloadCurrentChat();
+        }
     } catch {
-        hideLoader();
+        loader && hideLoader();
         await delay(500);
-        await callPopup('An error has occurred. Chat was not renamed.', 'text');
+        await callGenericPopup('An error has occurred. Chat was not renamed.', POPUP_TYPE.TEXT);
     } finally {
-        hideLoader();
+        loader && hideLoader();
+    }
+}
+
+/**
+ * Renames the currently selected chat.
+ * @param {string} oldFileName Old name of the chat (no JSONL extension)
+ * @param {string} newName New name for the chat (no JSONL extension)
+ */
+export async function renameChat(oldFileName, newName) {
+    return await renameGroupOrCharacterChat({
+        characterId: this_chid,
+        groupId: selected_group,
+        oldFileName: oldFileName,
+        newFileName: newName,
+        loader: true,
+    });
+}
+
+/**
+ * Forces the update of the chat name for a remote character.
+ * @param {string|number} characterId Character ID to update chat name for
+ * @param {string} newName New name for the chat
+ * @returns {Promise<void>}
+ */
+export async function updateRemoteChatName(characterId, newName) {
+    const character = characters[characterId];
+    if (!character) {
+        console.warn(`Character not found for ID: ${characterId}`);
+        return;
+    }
+    character.chat = newName;
+    const mergeRequest = {
+        avatar: character.avatar,
+        chat: newName,
+    };
+    const mergeResponse = await fetch('/api/characters/merge-attributes', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify(mergeRequest),
+    });
+    if (!mergeResponse.ok) {
+        console.error('Failed to save extension field', mergeResponse.statusText);
     }
 }
 
@@ -10076,9 +10196,6 @@ export async function renameChat(oldFileName, newName) {
 async function doGetChatName() {
     return getCurrentChatDetails().sessionName;
 }
-
-const isPwaMode = window.navigator.standalone;
-if (isPwaMode) { $('body').addClass('PWA'); }
 
 function doCharListDisplaySwitch() {
     power_user.charListGrid = !power_user.charListGrid;
@@ -10224,86 +10341,43 @@ function doDrawerOpenClick() {
 /**
  * Event handler to open or close a navbar drawer when a navbar icon is clicked.
  * Handles click events on .drawer-toggle elements.
- * @returns {void}
+ * @returns {Promise<void>}
  */
-function doNavbarIconClick() {
+export async function doNavbarIconClick() {
     const icon = $(this).find('.drawer-icon');
     const drawer = $(this).parent().find('.drawer-content');
-    if (drawer.hasClass('resizing')) { return; }
     const drawerWasOpenAlready = $(this).parent().find('.drawer-content').hasClass('openDrawer');
     const targetDrawerID = $(this).parent().find('.drawer-content').attr('id');
-    const pinnedDrawerClicked = drawer.hasClass('pinnedOpen');
 
-    if (!drawerWasOpenAlready) { //to open the drawer
-        $('.openDrawer').not('.pinnedOpen').addClass('resizing').each((_, el) => {
-            slideToggle(el, {
-                ...getSlideToggleOptions(),
-                onAnimationEnd: function (el) {
-                    el.closest('.drawer-content').classList.remove('resizing');
-                },
-            });
-        });
-        $('.openIcon').not('.drawerPinnedOpen').toggleClass('closedIcon openIcon');
-        $('.openDrawer').not('.pinnedOpen').toggleClass('closedDrawer openDrawer');
+    if (!drawerWasOpenAlready) {
+        const $openDrawers = $('.openDrawer:not(.pinnedOpen)');
+        const $openIcons = $('.openIcon:not(.drawerPinnedOpen)');
+        for (const iconEl of $openIcons) {
+            $(iconEl).toggleClass('closedIcon openIcon');
+        }
+        for (const el of $openDrawers) {
+            $(el).toggleClass('closedDrawer openDrawer');
+        }
+        if ($openDrawers.length) {
+            await delay(animation_duration);
+        }
         icon.toggleClass('openIcon closedIcon');
         drawer.toggleClass('openDrawer closedDrawer');
 
-        //console.log(targetDrawerID);
         if (targetDrawerID === 'right-nav-panel') {
-            $(this).closest('.drawer').find('.drawer-content').addClass('resizing').each((_, el) => {
-                slideToggle(el, {
-                    ...getSlideToggleOptions(),
-                    elementDisplayStyle: 'flex',
-                    onAnimationEnd: function (el) {
-                        el.closest('.drawer-content').classList.remove('resizing');
-                        favsToHotswap();
-                        $('#rm_print_characters_block').trigger('scroll');
-                    },
-                });
-            });
-        } else {
-            $(this).closest('.drawer').find('.drawer-content').addClass('resizing').each((_, el) => {
-                slideToggle(el, {
-                    ...getSlideToggleOptions(),
-                    onAnimationEnd: function (el) {
-                        el.closest('.drawer-content').classList.remove('resizing');
-                    },
-                });
-            });
+            favsToHotswap();
+            $('#rm_print_characters_block').trigger('scroll');
         }
 
         // Set the height of "autoSetHeight" textareas within the drawer to their scroll height
         if (!CSS.supports('field-sizing', 'content')) {
-            $(this).closest('.drawer').find('.drawer-content textarea.autoSetHeight').each(async function () {
-                await resetScrollHeight($(this));
-                return;
-            });
+            const textareas = $(this).closest('.drawer').find('.drawer-content textarea.autoSetHeight');
+            for (const textarea of textareas) {
+                await resetScrollHeight($(textarea));
+            }
         }
-
-    } else if (drawerWasOpenAlready) { //to close manually
+    } else if (drawerWasOpenAlready) {
         icon.toggleClass('closedIcon openIcon');
-
-        if (pinnedDrawerClicked) {
-            $(drawer).addClass('resizing').each((_, el) => {
-                slideToggle(el, {
-                    ...getSlideToggleOptions(),
-                    onAnimationEnd: function (el) {
-                        el.classList.remove('resizing');
-                    },
-                });
-            });
-        }
-        else {
-            $('.openDrawer').not('.pinnedOpen').addClass('resizing').each((_, el) => {
-                slideToggle(el, {
-                    ...getSlideToggleOptions(),
-                    onAnimationEnd: function (el) {
-                        el.closest('.drawer-content').classList.remove('resizing');
-                    },
-                });
-            });
-        }
-
         drawer.toggleClass('closedDrawer openDrawer');
     }
 }
@@ -10707,23 +10781,23 @@ jQuery(async function () {
 
     //menu buttons setup
 
-    $('#rm_button_settings').click(function () {
+    $('#rm_button_settings').on('click', function () {
         selected_button = 'settings';
         selectRightMenuWithAnimation('rm_api_block');
     });
-    $('#rm_button_characters').click(function () {
+    $('#rm_button_characters').on('click', function () {
         selected_button = 'characters';
         select_rm_characters();
     });
-    $('#rm_button_back').click(function () {
+    $('#rm_button_back').on('click', function () {
         selected_button = 'characters';
         select_rm_characters();
     });
-    $('#rm_button_create').click(function () {
+    $('#rm_button_create').on('click', function () {
         selected_button = 'create';
         select_rm_create();
     });
-    $('#rm_button_selected_ch').click(function () {
+    $('#rm_button_selected_ch').on('click', function () {
         if (selected_group) {
             select_group_chats(selected_group);
         } else {
@@ -10818,7 +10892,7 @@ jQuery(async function () {
         callPopup('<h3>' + t`Delete the Chat File?` + '</h3>', 'del_chat');
     });
 
-    $('#advanced_div').click(function () {
+    $('#advanced_div').on('click', function () {
         if (!is_advanced_char_open) {
             is_advanced_char_open = true;
             $('#character_popup').css({ 'display': 'flex', 'opacity': 0.0 }).addClass('open');
@@ -10833,7 +10907,7 @@ jQuery(async function () {
         }
     });
 
-    $('#character_cross').click(function () {
+    $('#character_cross').on('click', function () {
         is_advanced_char_open = false;
         $('#character_popup').transition({
             opacity: 0,
@@ -10843,12 +10917,12 @@ jQuery(async function () {
         setTimeout(function () { $('#character_popup').css('display', 'none'); }, animation_duration);
     });
 
-    $('#character_popup_ok').click(function () {
+    $('#character_popup_ok').on('click', function () {
         is_advanced_char_open = false;
         $('#character_popup').css('display', 'none');
     });
 
-    $('#dialogue_popup_ok').click(async function (e, customData) {
+    $('#dialogue_popup_ok').on('click', async function (_e, customData) {
         const fromSlashCommand = customData?.fromSlashCommand || false;
         dialogueCloseStop = false;
         $('#shadow_popup').transition({
@@ -10878,7 +10952,7 @@ jQuery(async function () {
                 hideLoader();
             } else {  // Open the history view again after 2 seconds (delay to avoid edge cases for deleting last chat).
                 setTimeout(function () {
-                    $('#option_select_chat').click();
+                    $('#option_select_chat').trigger('click');
                     $('#options').hide();  // hide option popup menu
                     hideLoader();
                 }, 2000);
@@ -10889,18 +10963,16 @@ jQuery(async function () {
             if (popup_type == 'input') {
                 dialogueResolve($('#dialogue_popup_input').val());
                 $('#dialogue_popup_input').val('');
-
             }
             else {
                 dialogueResolve(true);
-
             }
 
             dialogueResolve = null;
         }
     });
 
-    $('#dialogue_popup_cancel').click(function (e) {
+    $('#dialogue_popup_cancel').on('click', function (e) {
         dialogueCloseStop = false;
         $('#shadow_popup').transition({
             opacity: 0,
@@ -10913,21 +10985,20 @@ jQuery(async function () {
             $('#dialogue_popup').removeClass('large_dialogue_popup');
         }, animation_duration);
 
-        //$("#shadow_popup").css("opacity:", 0.0);
         popup_type = '';
 
         if (dialogueResolve) {
             dialogueResolve(false);
             dialogueResolve = null;
         }
-
     });
 
-    $('#add_avatar_button').change(function () {
-        read_avatar_load(this);
+    $('#add_avatar_button').on('change', function () {
+        const inputElement = /** @type {HTMLInputElement} */ (this);
+        read_avatar_load(inputElement);
     });
 
-    $('#form_create').submit(createOrEditCharacter);
+    $('#form_create').on('submit', (e) => createOrEditCharacter(e.originalEvent));
 
     $('#delete_button').on('click', async function () {
         if (this_chid === undefined || !characters[this_chid]) {
@@ -10938,7 +11009,7 @@ jQuery(async function () {
         let deleteChats = false;
 
         const confirm = await Popup.show.confirm(t`Delete the character?`, await renderTemplateAsync('deleteConfirm'), {
-            onClose: () => deleteChats = !!$('#del_char_checkbox').prop('checked'),
+            onClose: () => { deleteChats = !!$('#del_char_checkbox').prop('checked'); },
         });
         if (!confirm) {
             return;
@@ -10998,9 +11069,9 @@ jQuery(async function () {
         const oldFileName = oldFileNameFull.replace('.jsonl', '');
 
         const popupText = await renderTemplateAsync('chatRename');
-        const newName = await callPopup(popupText, 'input', oldFileName);
+        const newName = await callGenericPopup(popupText, POPUP_TYPE.INPUT, oldFileName);
 
-        if (!newName || newName == oldFileName) {
+        if (!newName || typeof newName !== 'string' || newName == oldFileName) {
             console.log('no new name found, aborting');
             return;
         }
@@ -11059,7 +11130,7 @@ jQuery(async function () {
 
     ///////////////////////////////////////////////////////////////////////////////////
 
-    $('#api_button').click(function (e) {
+    $('#api_button').on('click', function (e) {
         if ($('#api_url_text').val() != '') {
             let value = formatKoboldUrl(String($('#api_url_text').val()).trim());
 
@@ -11200,7 +11271,7 @@ jQuery(async function () {
             if ((selected_group || this_chid !== undefined) && !is_send_press) {
                 let deleteCurrentChat = false;
                 const result = await Popup.show.confirm(t`Start new chat?`, await renderTemplateAsync('newChatConfirm'), {
-                    onClose: () => deleteCurrentChat = !!$('#del_chat_checkbox').prop('checked'),
+                    onClose: () => { deleteCurrentChat = !!$('#del_chat_checkbox').prop('checked'); },
                 });
                 if (!result) {
                     return;
@@ -11304,7 +11375,7 @@ jQuery(async function () {
     //////////////////////////////////////////////////////////////////////////////////////////////
 
     //functionality for the cancel delete messages button, reverts to normal display of input form
-    $('#dialogue_del_mes_cancel').click(function () {
+    $('#dialogue_del_mes_cancel').on('click', function () {
         $('#dialogue_del_mes').css('display', 'none');
         $('#send_form').css('display', css_send_form_display);
         $('.del_checkbox').each(function () {
@@ -11444,7 +11515,7 @@ jQuery(async function () {
 
     //////////////////////////////////////////////////////////////
 
-    $('#select_chat_cross').click(function () {
+    $('#select_chat_cross').on('click', function () {
         $('#shadow_select_chat_popup').transition({
             opacity: 0,
             duration: animation_duration,
@@ -11538,8 +11609,10 @@ jQuery(async function () {
                 edit_textarea.height(0);
                 edit_textarea.height(edit_textarea[0].scrollHeight);
             }
-            edit_textarea.focus();
-            edit_textarea[0].setSelectionRange(     //this sets the cursor at the end of the text
+            edit_textarea.trigger('focus');
+            const textAreaElement = /** @type {HTMLTextAreaElement} */ (edit_textarea[0]);
+            // Sets the cursor at the end of the text
+            textAreaElement.setSelectionRange(
                 String(edit_textarea.val()).length,
                 String(edit_textarea.val()).length,
             );
@@ -11791,8 +11864,8 @@ jQuery(async function () {
     //Select chat
 
     //**************************CHARACTER IMPORT EXPORT*************************//
-    $('#character_import_button').click(function () {
-        $('#character_import_file').click();
+    $('#character_import_button').on('click', function () {
+        $('#character_import_file').trigger('click');
     });
 
     $('#character_import_file').on('change', async function (e) {
@@ -11860,12 +11933,16 @@ jQuery(async function () {
         }
     });
     //**************************CHAT IMPORT EXPORT*************************//
-    $('#chat_import_button').click(function () {
-        $('#chat_import_file').click();
+    $('#chat_import_button').on('click', function () {
+        $('#chat_import_file').trigger('click');
     });
 
     $('#chat_import_file').on('change', async function (e) {
-        const file = e.target.files[0];
+        const targetElement = /** @type {HTMLInputElement} */ (e.target);
+        if (!(targetElement instanceof HTMLInputElement)) {
+            return;
+        }
+        const file = targetElement.files[0];
 
         if (!file) {
             return;
@@ -11887,7 +11964,7 @@ jQuery(async function () {
         const format = ext[1].toLowerCase();
         $('#chat_import_file_type').val(format);
 
-        const formData = new FormData($('#form_import_chat').get(0));
+        const formData = new FormData(/** @type {HTMLFormElement} */($('#form_import_chat').get(0)));
         formData.append('user_name', name1);
         $('#select_chat_div').html('');
 
@@ -11898,12 +11975,12 @@ jQuery(async function () {
         }
     });
 
-    $('#rm_button_group_chats').click(function () {
+    $('#rm_button_group_chats').on('click', function () {
         selected_button = 'group_chats';
         select_group_chats();
     });
 
-    $('#rm_button_back_from_group').click(function () {
+    $('#rm_button_back_from_group').on('click', function () {
         selected_button = 'characters';
         select_rm_characters();
     });
@@ -11932,8 +12009,8 @@ jQuery(async function () {
 
     $('.drawer-toggle').on('click', doNavbarIconClick);
 
-    $('html').on('touchstart mousedown', function (e) {
-        var clickTarget = $(e.target);
+    $('html').on('touchstart mousedown', async function (e) {
+        const clickTarget = $(e.target);
 
         if (isExportPopupOpen
             && clickTarget.closest('#export_button').length == 0
@@ -11954,33 +12031,26 @@ jQuery(async function () {
             '#toast-container',
             '.select2-results',
         ];
+
         for (const id of forbiddenTargets) {
             if (clickTarget.closest(id).length > 0) {
                 return;
             }
         }
 
-        var targetParentHasOpenDrawer = clickTarget.parents('.openDrawer').length;
-        if (clickTarget.hasClass('drawer-icon') == false && !clickTarget.hasClass('openDrawer')) {
-            if ($('.openDrawer').length !== 0) {
-                if (targetParentHasOpenDrawer === 0) {
-                    //console.log($('.openDrawer').not('.pinnedOpen').length);
-                    $('.openDrawer').not('.pinnedOpen').addClass('resizing').each((_, el) => {
-                        slideToggle(el, {
-                            ...getSlideToggleOptions(),
-                            onAnimationEnd: (el) => {
-                                el.closest('.drawer-content').classList.remove('resizing');
-                            },
-                        });
-                    });
-                    $('.openIcon').not('.drawerPinnedOpen').toggleClass('closedIcon openIcon');
-                    $('.openDrawer').not('.pinnedOpen').toggleClass('closedDrawer openDrawer');
-                }
+        // This autocloses open drawers that are not pinned if a click happens inside the app which does not target them.
+        const targetParentHasOpenDrawer = clickTarget.parents('.openDrawer').length;
+        if (!clickTarget.hasClass('drawer-icon') && !clickTarget.hasClass('openDrawer')) {
+            const $openDrawers = $('.openDrawer').not('.pinnedOpen');
+            if ($openDrawers.length && targetParentHasOpenDrawer === 0) {
+                // Toggle icon and drawer classes
+                $('.openIcon').not('.drawerPinnedOpen').toggleClass('closedIcon openIcon');
+                $openDrawers.toggleClass('closedDrawer openDrawer');
             }
         }
     });
 
-    $(document).on('click', '.inline-drawer-toggle', function (e) {
+    $(document).on('click', '.inline-drawer-toggle', async function (e) {
         if ($(e.target).hasClass('text_pole')) {
             return;
         }
@@ -11989,6 +12059,7 @@ jQuery(async function () {
         const drawerContent = drawer.find('>.inline-drawer-content');
         icon.toggleClass('down up');
         icon.toggleClass('fa-circle-chevron-down fa-circle-chevron-up');
+        drawer.trigger('inline-drawer-toggle');
         drawerContent.stop().slideToggle({
             complete: () => {
                 $(this).css('height', '');
@@ -11997,10 +12068,10 @@ jQuery(async function () {
 
         // Set the height of "autoSetHeight" textareas within the inline-drawer to their scroll height
         if (!CSS.supports('field-sizing', 'content')) {
-            drawerContent.find('textarea.autoSetHeight').each(async function () {
-                await resetScrollHeight($(this));
-                return;
-            });
+            const textareas = drawerContent.find('textarea.autoSetHeight');
+            for (const textarea of textareas) {
+                await resetScrollHeight($(textarea));
+            }
         }
     });
 
@@ -12085,7 +12156,7 @@ jQuery(async function () {
         if (!(e.target instanceof HTMLElement)) return;
         if (e.target.matches('#OpenAllWIEntries')) {
             document.querySelectorAll('#world_popup_entries_list .inline-drawer').forEach((/** @type {HTMLElement} */ drawer) => {
-                toggleDrawer(drawer, true);
+                delay(0).then(() => toggleDrawer(drawer, true));
             });
         } else if (e.target.matches('#CloseAllWIEntries')) {
             document.querySelectorAll('#world_popup_entries_list .inline-drawer').forEach((/** @type {HTMLElement} */ drawer) => {
@@ -12115,7 +12186,7 @@ jQuery(async function () {
                 return;
             }
             if (isEditVisible && power_user.auto_save_msg_edits === true) {
-                $(`#chat .mes[mesid="${this_edit_mes_id}"] .mes_edit_done`).click();
+                $(`#chat .mes[mesid="${this_edit_mes_id}"] .mes_edit_done`).trigger('click');
                 closeMessageEditor('reasoning');
                 $('#send_textarea').focus();
                 return;
@@ -12130,7 +12201,8 @@ jQuery(async function () {
     });
 
     $('#char-management-dropdown').on('change', async (e) => {
-        let target = $(e.target.selectedOptions).attr('id');
+        const targetElement = /** @type {HTMLSelectElement} */ (e.target);
+        const target = $(targetElement.selectedOptions).attr('id');
         switch (target) {
             case 'set_character_world':
                 openCharacterWorldPopup();
@@ -12278,9 +12350,7 @@ jQuery(async function () {
 
     $(document).on('click', '.external_import_button, #external_import_button', async () => {
         const html = await renderTemplateAsync('importCharacters');
-
-        /** @type {string?} */
-        const input = await callGenericPopup(html, POPUP_TYPE.INPUT, '', { wider: true, okButton: $('#popup_template').attr('popup-button-import'), rows: 4 });
+        const input = await callGenericPopup(html, POPUP_TYPE.INPUT, '', { allowVerticalScrolling: true, wider: true, okButton: $('#popup_template').attr('popup-button-import'), rows: 4 });
 
         if (!input) {
             console.debug('Custom content import cancelled');
@@ -12288,7 +12358,7 @@ jQuery(async function () {
         }
 
         // break input into one input per line
-        const inputs = input.split('\n').map(x => x.trim()).filter(x => x.length > 0);
+        const inputs = String(input).split('\n').map(x => x.trim()).filter(x => x.length > 0);
 
         for (const url of inputs) {
             let request;

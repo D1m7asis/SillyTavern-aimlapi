@@ -1,6 +1,6 @@
 import { DOMPurify } from '../lib.js';
 import { isMobile } from './RossAscends-mods.js';
-import { amount_gen, callPopup, eventSource, event_types, getRequestHeaders, max_context, online_status, setGenerationParamsFromPreset } from '../script.js';
+import { amount_gen, eventSource, event_types, getRequestHeaders, max_context, online_status, setGenerationParamsFromPreset } from '../script.js';
 import { textgenerationwebui_settings as textgen_settings, textgen_types } from './textgen-settings.js';
 import { tokenizers } from './tokenizers.js';
 import { renderTemplateAsync } from './templates.js';
@@ -30,14 +30,17 @@ const OPENROUTER_PROVIDERS = [
     'Alibaba',
     'Amazon Bedrock',
     'Anthropic',
+    'AtlasCloud',
     'Atoma',
     'Avian',
     'Azure',
+    'BaseTen',
     'Cent-ML',
     'Cerebras',
     'Chutes',
     'Cloudflare',
     'Cohere',
+    'CrofAI',
     'Crusoe',
     'DeepInfra',
     'DeepSeek',
@@ -58,8 +61,8 @@ const OPENROUTER_PROVIDERS = [
     'Kluster',
     'Lambda',
     'Liquid',
-    'Mancer',
     'Mancer 2',
+    'Meta',
     'Minimax',
     'Mistral',
     'NCompass',
@@ -74,6 +77,7 @@ const OPENROUTER_PROVIDERS = [
     'Phala',
     'SambaNova',
     'Stealth',
+    'Switchpoint',
     'Targon',
     'Together',
     'Ubicloud',
@@ -827,7 +831,7 @@ async function downloadOllamaModel() {
 
         const html = `Enter a model tag, for example <code>llama2:latest</code>.<br>
         See <a target="_blank" href="https://ollama.ai/library">Library</a> for available models.`;
-        const name = await callPopup(html, 'input', '', { okButton: 'Download' });
+        const name = await callGenericPopup(html, POPUP_TYPE.INPUT, '', { okButton: 'Download' });
 
         if (!name) {
             return;

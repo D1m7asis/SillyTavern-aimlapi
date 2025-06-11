@@ -982,6 +982,11 @@ function parseTimestamp(timestamp) {
         return new Date(unixTime).toISOString();
     }
 
+    // ISO 8601
+    if (moment(timestamp, moment.ISO_8601, true).isValid()) {
+        return timestamp;
+    }
+
     let dtFmt = [];
 
     // meridiem-based format
@@ -1008,6 +1013,7 @@ function parseTimestamp(timestamp) {
         if (!rgxMatch) continue;
         return x.callback(...rgxMatch);
     }
+
     return;
 }
 
@@ -2147,19 +2153,26 @@ export function getFreeName(name, list, numberFormatter = (n) => ` #${n}`) {
  */
 export function toggleDrawer(drawer, expand = true) {
     /** @type {HTMLElement} */
-    const icon = drawer.querySelector('.inline-drawer-icon');
+    const icon = drawer.querySelector(':scope > .inline-drawer-header .inline-drawer-icon');
     /** @type {HTMLElement} */
-    const content = drawer.querySelector('.inline-drawer-content');
+    const content = drawer.querySelector(':scope > .inline-drawer-content');
+
+    if (!icon || !content) {
+        console.debug('toggleDrawer: No icon or content found in the drawer element.');
+        return;
+    }
 
     if (expand) {
-        icon.classList.remove('up', 'fa-circle-chevron-up');
-        icon.classList.add('down', 'fa-circle-chevron-down');
-        content.style.display = 'block';
-    } else {
         icon.classList.remove('down', 'fa-circle-chevron-down');
         icon.classList.add('up', 'fa-circle-chevron-up');
+        content.style.display = 'block';
+    } else {
+        icon.classList.remove('up', 'fa-circle-chevron-up');
+        icon.classList.add('down', 'fa-circle-chevron-down');
         content.style.display = 'none';
     }
+
+    drawer.dispatchEvent(new CustomEvent('inline-drawer-toggle', { bubbles: true }));
 
     // Set the height of "autoSetHeight" textareas within the inline-drawer to their scroll height
     if (!CSS.supports('field-sizing', 'content')) {

@@ -7,7 +7,6 @@ import { Fuse, DOMPurify } from '../lib.js';
 
 import {
     abortStatusCheck,
-    callPopup,
     characters,
     event_types,
     eventSource,
@@ -71,7 +70,7 @@ import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument } from './slash-commands/SlashCommandArgument.js';
 import { renderTemplateAsync } from './templates.js';
 import { SlashCommandEnumValue } from './slash-commands/SlashCommandEnumValue.js';
-import { Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
+import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from './popup.js';
 import { t } from './i18n.js';
 import { ToolManager } from './tool-calling.js';
 import { accountStorage } from './util/AccountStorage.js';
@@ -209,8 +208,11 @@ export const custom_prompt_post_processing_types = {
     /** @deprecated Use MERGE instead. */
     CLAUDE: 'claude',
     MERGE: 'merge',
+    MERGE_TOOLS: 'merge_tools',
     SEMI: 'semi',
+    SEMI_TOOLS: 'semi_tools',
     STRICT: 'strict',
+    STRICT_TOOLS: 'strict_tools',
     SINGLE: 'single',
 };
 
@@ -236,6 +238,7 @@ const sensitiveFields = [
     'custom_include_body',
     'custom_exclude_body',
     'custom_include_headers',
+    'vertexai_region',
 ];
 
 /**
@@ -308,10 +311,13 @@ export const settingsToUpdate = {
     assistant_impersonation: ['#claude_assistant_impersonation', 'assistant_impersonation', false, false],
     claude_use_sysprompt: ['#claude_use_sysprompt', 'claude_use_sysprompt', true, false],
     use_makersuite_sysprompt: ['#use_makersuite_sysprompt', 'use_makersuite_sysprompt', true, false],
+    vertexai_auth_mode: ['#vertexai_auth_mode', 'vertexai_auth_mode', false, true],
+    vertexai_region: ['#vertexai_region', 'vertexai_region', false, true],
     use_alt_scale: ['#use_alt_scale', 'use_alt_scale', true, true],
     squash_system_messages: ['#squash_system_messages', 'squash_system_messages', true, false],
     image_inlining: ['#openai_image_inlining', 'image_inlining', true, false],
     inline_image_quality: ['#openai_inline_image_quality', 'inline_image_quality', false, false],
+    video_inlining: ['#openai_video_inlining', 'video_inlining', true, false],
     continue_prefill: ['#continue_prefill', 'continue_prefill', true, false],
     continue_postfix: ['#continue_postfix', 'continue_postfix', false, false],
     function_calling: ['#openai_function_calling', 'function_calling', true, false],
@@ -390,10 +396,13 @@ const default_settings = {
     assistant_impersonation: '',
     claude_use_sysprompt: false,
     use_makersuite_sysprompt: true,
+    vertexai_auth_mode: 'express',
+    vertexai_region: 'us-central1',
     use_alt_scale: false,
     squash_system_messages: false,
     image_inlining: false,
     inline_image_quality: 'low',
+    video_inlining: false,
     bypass_status_check: false,
     continue_prefill: false,
     function_calling: false,
@@ -475,10 +484,13 @@ const oai_settings = {
     assistant_impersonation: '',
     claude_use_sysprompt: false,
     use_makersuite_sysprompt: true,
+    vertexai_auth_mode: 'express',
+    vertexai_region: 'us-central1',
     use_alt_scale: false,
     squash_system_messages: false,
     image_inlining: false,
     inline_image_quality: 'low',
+    video_inlining: false,
     bypass_status_check: false,
     continue_prefill: false,
     function_calling: false,
@@ -590,8 +602,9 @@ function setOpenAIMessages(chat) {
         if (role == 'user' && oai_settings.wrap_in_quotes) content = `"${content}"`;
         const name = chat[j]['name'];
         const image = chat[j]?.extra?.image;
+        const video = chat[j]?.extra?.video;
         const invocations = chat[j]?.extra?.tool_invocations;
-        messages[i] = { 'role': role, 'content': content, name: name, 'image': image, 'invocations': invocations };
+        messages[i] = { 'role': role, 'content': content, name: name, 'image': image, 'video': video, 'invocations': invocations };
         j++;
     }
 
@@ -883,6 +896,7 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
     }
 
     const imageInlining = isImageInliningSupported();
+    const videoInlining = isVideoInliningSupported();
     const canUseTools = ToolManager.isToolCallingSupported();
 
     // Insert chat messages as long as there is budget available
@@ -903,6 +917,10 @@ async function populateChatHistory(messages, prompts, chatCompletion, type = nul
 
         if (imageInlining && chatPrompt.image) {
             await chatMessage.addImage(chatPrompt.image);
+        }
+
+        if (videoInlining && chatPrompt.video) {
+            await chatMessage.addVideo(chatPrompt.video);
         }
 
         if (canUseTools && Array.isArray(chatPrompt.invocations)) {
@@ -1916,6 +1934,36 @@ function saveModelList(data) {
 
         $('#model_pollinations_select').val(oai_settings.pollinations_model).trigger('change');
     }
+
+    if (oai_settings.chat_completion_source === chat_completion_sources.MAKERSUITE) {
+        // Clear only the "Other" optgroup for dynamic models
+        $('#google_other_models').empty();
+
+        // Get static model options that are already in the HTML
+        const staticModels = [];
+        $('#model_google_select option').each(function () {
+            staticModels.push($(this).val());
+        });
+
+        // Add dynamic models to the "Other" group
+        model_list.forEach((model) => {
+            // Only add if not already in static list
+            if (!staticModels.includes(model.id)) {
+                $('#google_other_models').append(
+                    $('<option>', {
+                        value: model.id,
+                        text: model.id,
+                    }));
+            }
+        });
+
+        const selectedModel = model_list.find(model => model.id === oai_settings.google_model);
+        if (model_list.length > 0 && (!selectedModel || !oai_settings.google_model)) {
+            oai_settings.google_model = model_list[0].id;
+        }
+
+        $('#model_google_select').val(oai_settings.google_model).trigger('change');
+    }
 }
 
 function appendOpenRouterOptions(model_list, groupModels = false, sort = false) {
@@ -2259,6 +2307,10 @@ async function sendOpenAIRequest(type, messages, signal) {
         generate_data['top_k'] = Number(oai_settings.top_k_openai);
         generate_data['stop'] = getCustomStoppingStrings(stopStringsLimit).slice(0, stopStringsLimit).filter(x => x.length >= 1 && x.length <= 16);
         generate_data['use_makersuite_sysprompt'] = oai_settings.use_makersuite_sysprompt;
+        if (isVertexAI) {
+            generate_data['vertexai_auth_mode'] = oai_settings.vertexai_auth_mode;
+            generate_data['vertexai_region'] = oai_settings.vertexai_region;
+        }
     }
 
     if (isMistral) {
@@ -2838,6 +2890,38 @@ class Message {
         } catch (error) {
             this.tokens += Message.tokensPerImage;
             console.error('Failed to get image token cost', error);
+        }
+    }
+
+    async addVideo(video) {
+        const textContent = this.content;
+        const isDataUrl = isDataURL(video);
+        if (!isDataUrl) {
+            try {
+                const response = await fetch(video, { method: 'GET', cache: 'force-cache' });
+                if (!response.ok) throw new Error('Failed to fetch video');
+                const blob = await response.blob();
+                video = await getBase64Async(blob);
+            } catch (error) {
+                console.error('Video adding skipped', error);
+                return;
+            }
+        }
+
+        // Note: No compression for videos (unlike images)
+        this.content = [
+            { type: 'text', text: textContent },
+            { type: 'video_url', video_url: { 'url': video } },
+        ];
+
+        try {
+            // Convservative estimate for video token cost without knowing duration
+            // Using Gemini calculation (263 tokens per second)
+            const tokens = 10000; // ~40 second video (60 seconds max)
+            this.tokens += tokens;
+        } catch (error) {
+            this.tokens += 10000;
+            console.error('Failed to get video token cost', error);
         }
     }
 
@@ -3459,6 +3543,7 @@ function loadOpenAISettings(data, settings) {
     oai_settings.assistant_impersonation = settings.assistant_impersonation ?? default_settings.assistant_impersonation;
     oai_settings.image_inlining = settings.image_inlining ?? default_settings.image_inlining;
     oai_settings.inline_image_quality = settings.inline_image_quality ?? default_settings.inline_image_quality;
+    oai_settings.video_inlining = settings.video_inlining ?? default_settings.video_inlining;
     oai_settings.bypass_status_check = settings.bypass_status_check ?? default_settings.bypass_status_check;
     oai_settings.show_thoughts = settings.show_thoughts ?? default_settings.show_thoughts;
     oai_settings.reasoning_effort = settings.reasoning_effort ?? default_settings.reasoning_effort;
@@ -3495,6 +3580,8 @@ function loadOpenAISettings(data, settings) {
     if (settings.openai_model !== undefined) oai_settings.openai_model = settings.openai_model;
     if (settings.claude_use_sysprompt !== undefined) oai_settings.claude_use_sysprompt = !!settings.claude_use_sysprompt;
     if (settings.use_makersuite_sysprompt !== undefined) oai_settings.use_makersuite_sysprompt = !!settings.use_makersuite_sysprompt;
+    if (settings.vertexai_auth_mode !== undefined) oai_settings.vertexai_auth_mode = settings.vertexai_auth_mode;
+    if (settings.vertexai_region !== undefined) oai_settings.vertexai_region = settings.vertexai_region;
     if (settings.use_alt_scale !== undefined) { oai_settings.use_alt_scale = !!settings.use_alt_scale; updateScaleForm(); }
     $('#stream_toggle').prop('checked', oai_settings.stream_openai);
     $('#api_url_scale').val(oai_settings.api_url_scale);
@@ -3506,6 +3593,8 @@ function loadOpenAISettings(data, settings) {
 
     $('#openai_inline_image_quality').val(oai_settings.inline_image_quality);
     $(`#openai_inline_image_quality option[value="${oai_settings.inline_image_quality}"]`).prop('selected', true);
+
+    $('#openai_video_inlining').prop('checked', oai_settings.video_inlining);
 
     $('#model_openai_select').val(oai_settings.openai_model);
     $(`#model_openai_select option[value="${oai_settings.openai_model}"`).prop('selected', true);
@@ -3552,6 +3641,11 @@ function loadOpenAISettings(data, settings) {
     $('#openai_external_category').toggle(oai_settings.show_external_models);
     $('#claude_use_sysprompt').prop('checked', oai_settings.claude_use_sysprompt);
     $('#use_makersuite_sysprompt').prop('checked', oai_settings.use_makersuite_sysprompt);
+    $('#vertexai_auth_mode').val(oai_settings.vertexai_auth_mode);
+    $('#vertexai_region').val(oai_settings.vertexai_region);
+    // Don't display Service Account JSON in textarea - it's stored in backend secrets
+    $('#vertexai_service_account_json').val('');
+    updateVertexAIServiceAccountStatus();
     $('#scale-alt').prop('checked', oai_settings.use_alt_scale);
     $('#openrouter_use_fallback').prop('checked', oai_settings.openrouter_use_fallback);
     $('#openrouter_group_models').prop('checked', oai_settings.openrouter_group_models);
@@ -3713,7 +3807,6 @@ async function getStatusOpen() {
         chat_completion_sources.SCALE,
         chat_completion_sources.CLAUDE,
         chat_completion_sources.AI21,
-        chat_completion_sources.MAKERSUITE,
         chat_completion_sources.VERTEXAI,
         chat_completion_sources.PERPLEXITY,
         chat_completion_sources.GROQ,
@@ -3780,6 +3873,9 @@ async function getStatusOpen() {
         }
         if (!('error' in responseData)) {
             setOnlineStatus(t`Valid`);
+        }
+        if (responseData.bypass) {
+            setOnlineStatus(t`Status check bypassed`);
         }
     } catch (error) {
         console.error(error);
@@ -3874,10 +3970,13 @@ async function saveOpenAIPreset(name, settings, triggerUi = true) {
         assistant_impersonation: settings.assistant_impersonation,
         claude_use_sysprompt: settings.claude_use_sysprompt,
         use_makersuite_sysprompt: settings.use_makersuite_sysprompt,
+        vertexai_auth_mode: settings.vertexai_auth_mode,
+        vertexai_region: settings.vertexai_region,
         use_alt_scale: settings.use_alt_scale,
         squash_system_messages: settings.squash_system_messages,
         image_inlining: settings.image_inlining,
         inline_image_quality: settings.inline_image_quality,
+        video_inlining: settings.video_inlining,
         bypass_status_check: settings.bypass_status_check,
         continue_prefill: settings.continue_prefill,
         continue_postfix: settings.continue_postfix,
@@ -4093,7 +4192,7 @@ async function onPresetImportFileChange(e) {
     }
 
     if (name in openai_setting_names) {
-        const confirm = await callPopup('Preset name already exists. Overwrite?', 'confirm');
+        const confirm = await callGenericPopup('Preset name already exists. Overwrite?', POPUP_TYPE.CONFIRM);
 
         if (!confirm) {
             return;
@@ -4229,7 +4328,7 @@ function onLogitBiasPresetExportClick() {
 }
 
 async function onDeletePresetClick() {
-    const confirm = await callPopup(t`Delete the preset? This action is irreversible and your current settings will be overwritten.`, 'confirm');
+    const confirm = await callGenericPopup(t`Delete the preset? This action is irreversible and your current settings will be overwritten.`, POPUP_TYPE.CONFIRM);
 
     if (!confirm) {
         return;
@@ -4264,7 +4363,7 @@ async function onDeletePresetClick() {
 }
 
 async function onLogitBiasPresetDeleteClick() {
-    const value = await callPopup(t`Delete the preset?`, 'confirm');
+    const value = await callGenericPopup(t`Delete the preset?`, POPUP_TYPE.CONFIRM);
 
     if (!value) {
         return;
@@ -4694,6 +4793,8 @@ async function onModelChange() {
             $('#openai_max_context').attr('max', max_1mil);
         } else if (value.includes('gemma-3-27b-it')) {
             $('#openai_max_context').attr('max', max_128k);
+        } else if (value.includes('gemma-3n-e4b-it')) {
+            $('#openai_max_context').attr('max', max_8k);
         } else if (value.includes('gemma-3') || value.includes('learnlm-1.5-pro-experimental')) {
             $('#openai_max_context').attr('max', max_32k);
         } else {
@@ -4986,10 +5087,7 @@ async function onOpenrouterModelSortChange() {
 }
 
 async function onNewPresetClick() {
-    const popupText = `
-        <h3>` + t`Preset name:` + `</h3>
-        <h4>` + t`Hint: Use a character/group name to bind preset to a specific chat.` + '</h4>';
-    const name = await callPopup(popupText, 'input', oai_settings.preset_settings_openai);
+    const name = await Popup.show.input(t`Preset name:`, t`Hint: Use a character/group name to bind preset to a specific chat.`, oai_settings.preset_settings_openai);
 
     if (!name) {
         return;
@@ -5066,15 +5164,27 @@ async function onConnectButtonClick(e) {
     }
 
     if (oai_settings.chat_completion_source == chat_completion_sources.VERTEXAI) {
-        const api_key_vertexai = String($('#api_key_vertexai').val()).trim();
+        if (oai_settings.vertexai_auth_mode === 'express') {
+            // Express mode - use API key
+            const api_key_vertexai = String($('#api_key_vertexai').val()).trim();
 
-        if (api_key_vertexai.length) {
-            await writeSecret(SECRET_KEYS.VERTEXAI, api_key_vertexai);
-        }
+            if (api_key_vertexai.length) {
+                await writeSecret(SECRET_KEYS.VERTEXAI, api_key_vertexai);
+            }
 
-        if (!secret_state[SECRET_KEYS.VERTEXAI] && !oai_settings.reverse_proxy) {
-            console.log('No secret key saved for Vertex AI');
-            return;
+            if (!secret_state[SECRET_KEYS.VERTEXAI] && !oai_settings.reverse_proxy) {
+                console.log('No secret key saved for Vertex AI Express mode');
+                return;
+            }
+        } else {
+            // Full version - use service account
+            // Project ID will be extracted from the Service Account JSON
+
+            // Check if service account JSON is saved in backend
+            if (!secret_state[SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT]) {
+                toastr.error('Service Account JSON is required for Vertex AI full version. Please validate and save your Service Account JSON.');
+                return;
+            }
         }
     }
 
@@ -5270,6 +5380,8 @@ function toggleChatCompletionForms() {
     }
     else if (oai_settings.chat_completion_source == chat_completion_sources.VERTEXAI) {
         $('#model_vertexai_select').trigger('change');
+        // Update UI based on authentication mode
+        onVertexAIAuthModeChange.call($('#vertexai_auth_mode')[0]);
     }
     else if (oai_settings.chat_completion_source == chat_completion_sources.OPENROUTER) {
         $('#model_openrouter_select').trigger('change');
@@ -5376,7 +5488,7 @@ async function onCustomizeParametersClick() {
         saveSettingsDebounced();
     });
 
-    callPopup(template, 'text', '', { wide: true, large: true });
+    await callGenericPopup(template, POPUP_TYPE.TEXT, '', { wide: true, large: true });
 }
 
 /**
@@ -5457,6 +5569,36 @@ export function isImageInliningSupported() {
             return visionSupportedModels.some(model => oai_settings.aimlapi_model.includes(model));
         case chat_completion_sources.POLLINATIONS:
             return (Array.isArray(model_list) && model_list.find(m => m.id === oai_settings.pollinations_model)?.vision);
+        default:
+            return false;
+    }
+}
+
+/**
+ * Check if the model supports video inlining
+ * @returns {boolean} True if the model supports video inlining
+ */
+export function isVideoInliningSupported() {
+    if (main_api !== 'openai') {
+        return false;
+    }
+
+    if (!oai_settings.video_inlining) {
+        return false;
+    }
+
+    // Only Gemini models support video for now
+    const videoSupportedModels = [
+        'gemini-2.0',
+        'gemini-2.5',
+        'gemini-exp-1206',
+    ];
+
+    switch (oai_settings.chat_completion_source) {
+        case chat_completion_sources.MAKERSUITE:
+            return videoSupportedModels.some(model => oai_settings.google_model.includes(model));
+        case chat_completion_sources.VERTEXAI:
+            return videoSupportedModels.some(model => oai_settings.vertexai_model.includes(model));
         default:
             return false;
     }
@@ -5584,6 +5726,136 @@ function runProxyCallback(_, value) {
     $('#openai_proxy_preset').val(foundName).trigger('change');
     return foundName;
 }
+
+/**
+ * Handle Vertex AI authentication mode change
+ */
+function onVertexAIAuthModeChange() {
+    const authMode = String($(this).val());
+    oai_settings.vertexai_auth_mode = authMode;
+
+    $('#vertexai_form [data-mode]').each(function () {
+        const mode = $(this).data('mode');
+        $(this).toggle(mode === authMode);
+        $(this).find('option').toggle(mode === authMode);
+    });
+
+    saveSettingsDebounced();
+}
+
+/**
+ * Validate Vertex AI service account JSON
+ */
+async function onVertexAIValidateServiceAccount() {
+    const jsonContent = String($('#vertexai_service_account_json').val()).trim();
+
+    if (!jsonContent) {
+        toastr.error(t`Please enter Service Account JSON content`);
+        return;
+    }
+
+    try {
+        const serviceAccount = JSON.parse(jsonContent);
+        const requiredFields = ['type', 'project_id', 'private_key', 'client_email', 'client_id'];
+        const missingFields = requiredFields.filter(field => !serviceAccount[field]);
+
+        if (missingFields.length > 0) {
+            toastr.error(t`Missing required fields: ${missingFields.join(', ')}`);
+            updateVertexAIServiceAccountStatus(false, t`Missing fields: ${missingFields.join(', ')}`);
+            return;
+        }
+
+        if (serviceAccount.type !== 'service_account') {
+            toastr.error(t`Invalid service account type. Expected "service_account"`);
+            updateVertexAIServiceAccountStatus(false, t`Invalid service account type`);
+            return;
+        }
+
+        // Save to backend secret storage
+        await writeSecret(SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT, jsonContent);
+
+        // Show success status
+        updateVertexAIServiceAccountStatus(true, `Project: ${serviceAccount.project_id}, Email: ${serviceAccount.client_email}`);
+
+        toastr.success(t`Service Account JSON is valid and saved securely`);
+        saveSettingsDebounced();
+    } catch (error) {
+        console.error('JSON validation error:', error);
+        toastr.error(t`Invalid JSON format`);
+        updateVertexAIServiceAccountStatus(false, t`Invalid JSON format`);
+    }
+}
+
+/**
+ * Clear Vertex AI service account JSON
+ */
+async function onVertexAIClearServiceAccount() {
+    $('#vertexai_service_account_json').val('');
+
+    // Clear from backend secret storage
+    await writeSecret(SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT, '');
+
+    updateVertexAIServiceAccountStatus(false);
+    toastr.info(t`Service Account JSON cleared`);
+    saveSettingsDebounced();
+}
+
+/**
+ * Handle Vertex AI service account JSON input change
+ */
+function onVertexAIServiceAccountJsonChange() {
+    const jsonContent = String($(this).val()).trim();
+
+    if (jsonContent) {
+        // Auto-validate when content is pasted
+        try {
+            const serviceAccount = JSON.parse(jsonContent);
+            const requiredFields = ['type', 'project_id', 'private_key', 'client_email'];
+            const hasAllFields = requiredFields.every(field => serviceAccount[field]);
+
+            if (hasAllFields && serviceAccount.type === 'service_account') {
+                updateVertexAIServiceAccountStatus(false, t`JSON appears valid - click "Validate JSON" to save`);
+            } else {
+                updateVertexAIServiceAccountStatus(false, t`Incomplete or invalid JSON`);
+            }
+        } catch (error) {
+            updateVertexAIServiceAccountStatus(false, t`Invalid JSON format`);
+        }
+    } else {
+        updateVertexAIServiceAccountStatus(false);
+    }
+
+    // Don't save settings automatically
+    // saveSettingsDebounced();
+}
+
+/**
+ * Update the Vertex AI service account status display
+ * @param {boolean} isValid - Whether the service account is valid
+ * @param {string} message - Status message to display
+ */
+function updateVertexAIServiceAccountStatus(isValid = false, message = '') {
+    const statusDiv = $('#vertexai_service_account_status');
+    const infoSpan = $('#vertexai_service_account_info');
+
+    // If no explicit message provided, check if we have a saved service account
+    if (!message && secret_state[SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT]) {
+        isValid = true;
+        message = t`Service Account JSON is saved and ready to use`;
+    }
+
+    if (isValid && message) {
+        infoSpan.html(`<i class="fa-solid fa-check-circle" style="color: green;"></i> ${message}`);
+        statusDiv.show();
+    } else if (!isValid && message) {
+        infoSpan.html(`<i class="fa-solid fa-exclamation-triangle" style="color: orange;"></i> ${message}`);
+        statusDiv.show();
+    } else {
+        statusDiv.hide();
+    }
+}
+
+
 
 export function initOpenAI() {
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
@@ -5890,6 +6162,11 @@ export function initOpenAI() {
         saveSettingsDebounced();
     });
 
+    $('#openai_video_inlining').on('input', function () {
+        oai_settings.video_inlining = !!$(this).prop('checked');
+        saveSettingsDebounced();
+    });
+
     $('#continue_prefill').on('input', function () {
         oai_settings.continue_prefill = !!$(this).prop('checked');
         saveSettingsDebounced();
@@ -6055,6 +6332,14 @@ export function initOpenAI() {
     $('#model_scale_select').on('change', onModelChange);
     $('#model_google_select').on('change', onModelChange);
     $('#model_vertexai_select').on('change', onModelChange);
+    $('#vertexai_auth_mode').on('change', onVertexAIAuthModeChange);
+    $('#vertexai_region').on('input', function () {
+        oai_settings.vertexai_region = String($(this).val());
+        saveSettingsDebounced();
+    });
+    $('#vertexai_service_account_json').on('input', onVertexAIServiceAccountJsonChange);
+    $('#vertexai_validate_service_account').on('click', onVertexAIValidateServiceAccount);
+    $('#vertexai_clear_service_account').on('click', onVertexAIClearServiceAccount);
     $('#model_openrouter_select').on('change', onModelChange);
     $('#openrouter_group_models').on('change', onOpenrouterModelSortChange);
     $('#openrouter_sort_models').on('change', onOpenrouterModelSortChange);

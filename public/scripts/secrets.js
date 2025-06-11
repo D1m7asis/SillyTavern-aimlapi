@@ -1,6 +1,7 @@
 import { DOMPurify } from '../lib.js';
-import { callPopup, getRequestHeaders } from '../script.js';
+import { getRequestHeaders } from '../script.js';
 import { t } from './i18n.js';
+import { callGenericPopup, Popup, POPUP_TYPE } from './popup.js';
 
 export const SECRET_KEYS = {
     HORDE: 'api_key_horde',
@@ -45,6 +46,7 @@ export const SECRET_KEYS = {
     AIMLAPI: 'api_key_aimlapi',
     FALAI: 'api_key_falai',
     XAI: 'api_key_xai',
+    VERTEXAI_SERVICE_ACCOUNT: 'vertexai_service_account_json',
 };
 
 const INPUT_MAP = {
@@ -82,7 +84,12 @@ const INPUT_MAP = {
     [SECRET_KEYS.DEEPSEEK]: '#api_key_deepseek',
     [SECRET_KEYS.AIMLAPI]: '#api_key_aimlapi',
     [SECRET_KEYS.XAI]: '#api_key_xai',
+    [SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT]: '#vertexai_service_account_json',
 };
+
+const STATIC_PLACEHOLDER_KEYS = [
+    SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT,
+];
 
 async function clearSecret() {
     const key = $(this).data('key');
@@ -95,6 +102,9 @@ async function clearSecret() {
 
 export function updateSecretDisplay() {
     for (const [secret_key, input_selector] of Object.entries(INPUT_MAP)) {
+        if (STATIC_PLACEHOLDER_KEYS.includes(secret_key)) {
+            continue;
+        }
         const validSecret = !!secret_state[secret_key];
 
         const placeholder = $('#viewSecrets').attr(validSecret ? 'key_saved_text' : 'missing_key_text');
@@ -109,7 +119,7 @@ async function viewSecrets() {
     });
 
     if (response.status == 403) {
-        callPopup('<h3>' + t`Forbidden` + '</h3><p>' + t`To view your API keys here, set the value of allowKeysExposure to true in config.yaml file and restart the SillyTavern server.` + '</p>', 'text');
+        await Popup.show.text(t`Forbidden`, t`To view your API keys here, set the value of allowKeysExposure to true in config.yaml file and restart the SillyTavern server.`);
         return;
     }
 
@@ -127,7 +137,7 @@ async function viewSecrets() {
         $(table).append(`<tr><td>${DOMPurify.sanitize(key)}</td><td>${DOMPurify.sanitize(value)}</td></tr>`);
     }
 
-    callPopup(table.outerHTML, 'text');
+    await callGenericPopup(table.outerHTML, POPUP_TYPE.TEXT, '', { wide: true, large: true, allowVerticalScrolling: true });
 }
 
 export let secret_state = {};

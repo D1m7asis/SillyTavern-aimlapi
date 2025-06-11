@@ -16,6 +16,7 @@ import {
     mergeObjectWithYaml,
     excludeKeysByYaml,
     color,
+    trimTrailingSlash,
 } from '../../util.js';
 import {
     convertClaudeMessages,
@@ -25,12 +26,13 @@ import {
     convertMistralMessages,
     convertAI21Messages,
     convertXAIMessages,
-    mergeMessages,
     cachingAtDepthForOpenRouterClaude,
     cachingAtDepthForClaude,
     getPromptNames,
     calculateClaudeBudgetTokens,
     calculateGoogleBudgetTokens,
+    postProcessPrompt,
+    PROMPT_PROCESSING_TYPE,
 } from '../../prompt-converters.js';
 
 import { readSecret, SECRET_KEYS } from '../secrets.js';
@@ -43,6 +45,7 @@ import {
     webTokenizers,
     getWebTokenizer,
 } from '../tokenizers.js';
+import { getVertexAIAuth, getProjectIdFromServiceAccount } from '../google.js';
 
 const API_OPENAI = 'https://api.openai.com/v1';
 const API_CLAUDE = 'https://api.anthropic.com/v1';
@@ -60,34 +63,6 @@ const API_DEEPSEEK = 'https://api.deepseek.com/beta';
 const API_XAI = 'https://api.x.ai/v1';
 const API_AIMLAPI = 'https://api.aimlapi.com/v1';
 const API_POLLINATIONS = 'https://text.pollinations.ai/openai';
-
-/**
- * Applies a post-processing step to the generated messages.
- * @param {object[]} messages Messages to post-process
- * @param {string} type Prompt conversion type
- * @param {import('../../prompt-converters.js').PromptNames} names Prompt names
- * @returns
- */
-function postProcessPrompt(messages, type, names) {
-    const addAssistantPrefix = x => x.length && (x[x.length - 1].role !== 'assistant' || (x[x.length - 1].prefix = true)) ? x : x;
-    switch (type) {
-        case 'merge':
-        case 'claude':
-            return mergeMessages(messages, names, { strict: false, placeholders: false, single: false });
-        case 'semi':
-            return mergeMessages(messages, names, { strict: true, placeholders: false, single: false });
-        case 'strict':
-            return mergeMessages(messages, names, { strict: true, placeholders: true, single: false });
-        case 'deepseek':
-            return addAssistantPrefix(mergeMessages(messages, names, { strict: true, placeholders: false, single: false }));
-        case 'deepseek-reasoner':
-            return addAssistantPrefix(mergeMessages(messages, names, { strict: true, placeholders: true, single: false }));
-        case 'single':
-            return mergeMessages(messages, names, { strict: true, placeholders: false, single: true });
-        default:
-            return messages;
-    }
-}
 
 /**
  * Gets OpenRouter transforms based on the request.
@@ -349,13 +324,20 @@ async function sendMakerSuiteRequest(request, response) {
     let apiUrl;
     let apiKey;
 
+    let authHeader;
+    let authType;
+
     if (useVertexAi) {
         apiUrl = new URL(request.body.reverse_proxy || API_VERTEX_AI);
-        apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.VERTEXAI);
 
-        if (!request.body.reverse_proxy && !apiKey) {
-            console.warn(`${apiName} API key is missing.`);
-            return response.status(400).send({ error: true });
+        try {
+            const auth = await getVertexAIAuth(request);
+            authHeader = auth.authHeader;
+            authType = auth.authType;
+            console.debug(`Using Vertex AI authentication type: ${authType}`);
+        } catch (error) {
+            console.warn(`${apiName} authentication failed: ${error.message}`);
+            return response.status(400).send({ error: true, message: error.message });
         }
     } else {
         apiUrl = new URL(request.body.reverse_proxy || API_MAKERSUITE);
@@ -365,6 +347,9 @@ async function sendMakerSuiteRequest(request, response) {
             console.warn(`${apiName} API key is missing.`);
             return response.status(400).send({ error: true });
         }
+
+        authHeader = `Bearer ${apiKey}`;
+        authType = 'api_key';
     }
 
     const model = String(request.body.model);
@@ -392,6 +377,7 @@ async function sendMakerSuiteRequest(request, response) {
         const imageGenerationModels = [
             'gemini-2.0-flash-exp',
             'gemini-2.0-flash-exp-image-generation',
+            'gemini-2.0-flash-preview-image-generation',
         ];
 
         // These models do not support setting the threshold to OFF at all.
@@ -403,7 +389,6 @@ async function sendMakerSuiteRequest(request, response) {
         ];
 
         const isThinkingConfigModel = m => /^gemini-2.5-(flash|pro)/.test(m);
-        const isThinkingBudgetModel = m => /^gemini-2.5-flash/.test(m);
 
         const noSearchModels = [
             'gemini-2.0-flash-lite',
@@ -459,11 +444,9 @@ async function sendMakerSuiteRequest(request, response) {
         if (isThinkingConfigModel(model)) {
             const thinkingConfig = { includeThoughts: includeReasoning };
 
-            if (isThinkingBudgetModel(model)) {
-                const thinkingBudget = calculateGoogleBudgetTokens(generationConfig.maxOutputTokens, reasoningEffort);
-                if (Number.isInteger(thinkingBudget)) {
-                    thinkingConfig.thinkingBudget = thinkingBudget;
-                }
+            const thinkingBudget = calculateGoogleBudgetTokens(generationConfig.maxOutputTokens, reasoningEffort, model);
+            if (Number.isInteger(thinkingBudget)) {
+                thinkingConfig.thinkingBudget = thinkingBudget;
             }
 
             generationConfig.thinkingConfig = thinkingConfig;
@@ -500,17 +483,53 @@ async function sendMakerSuiteRequest(request, response) {
         const responseType = (stream ? 'streamGenerateContent' : 'generateContent');
 
         let url;
+        let headers = {
+            'Content-Type': 'application/json',
+        };
+
         if (useVertexAi) {
-            url = `${apiUrl.toString().replace(/\/$/, '')}/v1/publishers/google/models/${model}:${responseType}?key=${apiKey}${stream ? '&alt=sse' : ''}`;
+            if (authType === 'express') {
+                // For Express mode (API key authentication), use the key parameter
+                const keyParam = authHeader.replace('Bearer ', '');
+                url = `${apiUrl.toString().replace(/\/$/, '')}/v1/publishers/google/models/${model}:${responseType}?key=${keyParam}${stream ? '&alt=sse' : ''}`;
+            } else if (authType === 'full') {
+                // For Full mode (service account authentication), use project-specific URL
+                // Get project ID from Service Account JSON
+                const serviceAccountJson = readSecret(request.user.directories, SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT);
+                if (!serviceAccountJson) {
+                    console.warn('Vertex AI Service Account JSON is missing.');
+                    return response.status(400).send({ error: true });
+                }
+
+                let projectId;
+                try {
+                    const serviceAccount = JSON.parse(serviceAccountJson);
+                    projectId = getProjectIdFromServiceAccount(serviceAccount);
+                } catch (error) {
+                    console.error('Failed to extract project ID from Service Account JSON:', error);
+                    return response.status(400).send({ error: true });
+                }
+                const region = request.body.vertexai_region || 'us-central1';
+                // Handle global region differently - no region prefix in hostname
+                if (region === 'global') {
+                    url = `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
+                } else {
+                    url = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
+                }
+                headers['Authorization'] = authHeader;
+            } else {
+                // For proxy mode, use the original URL with Authorization header
+                url = `${apiUrl.toString().replace(/\/$/, '')}/v1/publishers/google/models/${model}:${responseType}${stream ? '?alt=sse' : ''}`;
+                headers['Authorization'] = authHeader;
+            }
         } else {
             url = `${apiUrl.toString().replace(/\/$/, '')}/${apiVersion}/models/${model}:${responseType}?key=${apiKey}${stream ? '&alt=sse' : ''}`;
         }
+
         const generateResponse = await fetch(url, {
             body: JSON.stringify(body),
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: headers,
             signal: controller.signal,
         });
 
@@ -848,7 +867,9 @@ async function sendDeepSeekRequest(request, response) {
             });
         }
 
-        const postProcessType = String(request.body.model).endsWith('-reasoner') ? 'deepseek-reasoner' : 'deepseek';
+        const postProcessType = String(request.body.model).endsWith('-reasoner')
+            ? PROMPT_PROCESSING_TYPE.DEEPSEEK_REASONER
+            : PROMPT_PROCESSING_TYPE.DEEPSEEK;
         const processedMessages = postProcessPrompt(request.body.messages, postProcessType, getPromptNames(request));
 
         const requestBody = {
@@ -1087,74 +1108,110 @@ async function sendAimlapiRequest(request, response) {
 
 export const router = express.Router();
 
-router.post('/status', async function (request, response_getstatus_openai) {
-    if (!request.body) return response_getstatus_openai.sendStatus(400);
+router.post('/status', async function (request, statusResponse) {
+    if (!request.body) return statusResponse.sendStatus(400);
 
-    let api_url;
-    let api_key_openai;
+    let apiUrl;
+    let apiKey;
     let headers;
 
     if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENAI) {
-        api_url = new URL(request.body.reverse_proxy || API_OPENAI).toString();
-        api_key_openai = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.OPENAI);
+        apiUrl = new URL(request.body.reverse_proxy || API_OPENAI).toString();
+        apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.OPENAI);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENROUTER) {
-        api_url = 'https://openrouter.ai/api/v1';
-        api_key_openai = readSecret(request.user.directories, SECRET_KEYS.OPENROUTER);
+        apiUrl = 'https://openrouter.ai/api/v1';
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.OPENROUTER);
         // OpenRouter needs to pass the Referer and X-Title: https://openrouter.ai/docs#requests
         headers = { ...OPENROUTER_HEADERS };
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.MISTRALAI) {
-        api_url = new URL(request.body.reverse_proxy || API_MISTRAL).toString();
-        api_key_openai = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.MISTRALAI);
+        apiUrl = new URL(request.body.reverse_proxy || API_MISTRAL).toString();
+        apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.MISTRALAI);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
-        api_url = request.body.custom_url;
-        api_key_openai = readSecret(request.user.directories, SECRET_KEYS.CUSTOM);
+        apiUrl = request.body.custom_url;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.CUSTOM);
         headers = {};
         mergeObjectWithYaml(headers, request.body.custom_include_headers);
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.COHERE) {
-        api_url = API_COHERE_V1;
-        api_key_openai = readSecret(request.user.directories, SECRET_KEYS.COHERE);
+        apiUrl = API_COHERE_V1;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.COHERE);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.ZEROONEAI) {
-        api_url = API_01AI;
-        api_key_openai = readSecret(request.user.directories, SECRET_KEYS.ZEROONEAI);
+        apiUrl = API_01AI;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.ZEROONEAI);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.NANOGPT) {
-        api_url = API_NANOGPT;
-        api_key_openai = readSecret(request.user.directories, SECRET_KEYS.NANOGPT);
+        apiUrl = API_NANOGPT;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.NANOGPT);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.DEEPSEEK) {
-        api_url = new URL(request.body.reverse_proxy || API_DEEPSEEK.replace('/beta', ''));
-        api_key_openai = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.DEEPSEEK);
+        apiUrl = new URL(request.body.reverse_proxy || API_DEEPSEEK.replace('/beta', ''));
+        apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.DEEPSEEK);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.XAI) {
-        api_url = new URL(request.body.reverse_proxy || API_XAI);
-        api_key_openai = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.XAI);
+        apiUrl = new URL(request.body.reverse_proxy || API_XAI);
+        apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.XAI);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.AIMLAPI) {
         api_url = new URL(request.body.reverse_proxy || API_AIMLAPI);
         api_key_openai = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.AIMLAPI);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.POLLINATIONS) {
-        api_url = 'https://text.pollinations.ai';
-        api_key_openai = 'NONE';
+        apiUrl = 'https://text.pollinations.ai';
+        apiKey = 'NONE';
         headers = {};
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.MAKERSUITE) {
+        apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.MAKERSUITE);
+        apiUrl = trimTrailingSlash(request.body.reverse_proxy || API_MAKERSUITE);
+        const apiVersion = getConfigValue('gemini.apiVersion', 'v1beta');
+        const modelsUrl = !apiKey && request.body.reverse_proxy
+            ? `${apiUrl}/${apiVersion}/models`
+            : `${apiUrl}/${apiVersion}/models?key=${apiKey}`;
+
+        if (!apiKey && !request.body.reverse_proxy) {
+            console.warn('Google AI Studio API key is missing.');
+            return statusResponse.status(400).send({ error: true });
+        }
+
+        try {
+            const response = await fetch(modelsUrl);
+
+            if (response.ok) {
+                /** @type {any} */
+                const data = await response.json();
+                // Transform Google AI Studio models to OpenAI format
+                const models = data.models
+                    ?.filter(model => model.supportedGenerationMethods?.includes('generateContent'))
+                    ?.map(model => ({
+                        id: model.name.replace('models/', ''),
+                    })) || [];
+
+                console.info('Available Google AI Studio models:', models.map(m => m.id));
+                return statusResponse.send({ data: models });
+            } else {
+                console.warn('Google AI Studio models endpoint failed:', response.status, response.statusText);
+                return statusResponse.send({ error: true, bypass: true, data: { data: [] } });
+            }
+        } catch (error) {
+            console.error('Error fetching Google AI Studio models:', error);
+            return statusResponse.send({ error: true, bypass: true, data: { data: [] } });
+        }
     } else {
         console.warn('This chat completion source is not supported yet.');
-        return response_getstatus_openai.status(400).send({ error: true });
+        return statusResponse.status(400).send({ error: true });
     }
 
-    if (!api_key_openai && !request.body.reverse_proxy && request.body.chat_completion_source !== CHAT_COMPLETION_SOURCES.CUSTOM) {
+    if (!apiKey && !request.body.reverse_proxy && request.body.chat_completion_source !== CHAT_COMPLETION_SOURCES.CUSTOM) {
         console.warn('Chat Completion API key is missing.');
-        return response_getstatus_openai.status(400).send({ error: true });
+        return statusResponse.status(400).send({ error: true });
     }
 
     try {
-        const response = await fetch(api_url + '/models', {
+        const response = await fetch(apiUrl + '/models', {
             method: 'GET',
             headers: {
-                'Authorization': 'Bearer ' + api_key_openai,
+                'Authorization': 'Bearer ' + apiKey,
                 ...headers,
             },
         });
@@ -1167,7 +1224,7 @@ router.post('/status', async function (request, response_getstatus_openai) {
                 data = { data: data.map(model => ({ id: model.name, ...model })) };
             }
 
-            response_getstatus_openai.send(data);
+            statusResponse.send(data);
 
             if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.COHERE && Array.isArray(data?.models)) {
                 data.data = data.models.map(model => ({ id: model.name, ...model }));
@@ -1203,15 +1260,15 @@ router.post('/status', async function (request, response_getstatus_openai) {
         }
         else {
             console.error('Chat Completion status check failed. Either Access Token is incorrect or API endpoint is down.');
-            response_getstatus_openai.send({ error: true, can_bypass: true, data: { data: [] } });
+            statusResponse.send({ error: true, data: { data: [] } });
         }
     } catch (e) {
         console.error(e);
 
-        if (!response_getstatus_openai.headersSent) {
-            response_getstatus_openai.send({ error: true });
+        if (!statusResponse.headersSent) {
+            statusResponse.send({ error: true });
         } else {
-            response_getstatus_openai.end();
+            statusResponse.end();
         }
     }
 });
@@ -1388,10 +1445,11 @@ router.post('/generate', function (request, response) {
             bodyParams['reasoning'] = { effort: request.body.reasoning_effort };
         }
 
-        let cachingAtDepth = getConfigValue('claude.cachingAtDepth', -1, 'number');
+        const cachingAtDepth = getConfigValue('claude.cachingAtDepth', -1, 'number');
         const isClaude3or4 = /anthropic\/claude-(3|opus-4|sonnet-4)/.test(request.body.model);
+        const cacheTTL = getConfigValue('claude.extendedTTL', false, 'boolean') ? '1h' : '5m';
         if (Number.isInteger(cachingAtDepth) && cachingAtDepth >= 0 && isClaude3or4) {
-            cachingAtDepthForOpenRouterClaude(request.body.messages, cachingAtDepth);
+            cachingAtDepthForOpenRouterClaude(request.body.messages, cachingAtDepth, cacheTTL);
         }
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
         apiUrl = request.body.custom_url;
@@ -1415,7 +1473,7 @@ router.post('/generate', function (request, response) {
         apiKey = readSecret(request.user.directories, SECRET_KEYS.PERPLEXITY);
         headers = {};
         bodyParams = {};
-        request.body.messages = postProcessPrompt(request.body.messages, 'strict', getPromptNames(request));
+        request.body.messages = postProcessPrompt(request.body.messages, PROMPT_PROCESSING_TYPE.STRICT, getPromptNames(request));
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.GROQ) {
         apiUrl = API_GROQ;
         apiKey = readSecret(request.user.directories, SECRET_KEYS.GROQ);

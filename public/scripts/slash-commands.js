@@ -7,7 +7,6 @@ import {
     activateSendButtons,
     addOneMessage,
     api_server,
-    callPopup,
     characters,
     chat,
     chat_metadata,
@@ -33,6 +32,7 @@ import {
     removeMacros,
     renameCharacter,
     saveChatConditional,
+    saveSettingsDebounced,
     sendMessageAsUser,
     sendSystemMessage,
     setActiveCharacter,
@@ -66,7 +66,7 @@ import { background_settings } from './backgrounds.js';
 import { SlashCommandClosure } from './slash-commands/SlashCommandClosure.js';
 import { SlashCommandClosureResult } from './slash-commands/SlashCommandClosureResult.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from './slash-commands/SlashCommandArgument.js';
-import { AutoComplete } from './autocomplete/AutoComplete.js';
+import { AutoComplete, AUTOCOMPLETE_STATE } from './autocomplete/AutoComplete.js';
 import { SlashCommand } from './slash-commands/SlashCommand.js';
 import { SlashCommandAbortController } from './slash-commands/SlashCommandAbortController.js';
 import { SlashCommandNamedArgumentAssignment } from './slash-commands/SlashCommandNamedArgumentAssignment.js';
@@ -777,7 +777,7 @@ export function initDefaultSlashCommands() {
             const isId = !isNaN(parseInt(arg));
             const groupMember = findGroupMemberId(arg, true);
             if (!groupMember) {
-                toastr.warn(`No group member found using ${isId ? 'id' : 'string'} ${arg}`);
+                toastr.warning(`No group member found using ${isId ? 'id' : 'string'} ${arg}`);
                 return '';
             }
             return groupMember[field];
@@ -2127,6 +2127,9 @@ export function initDefaultSlashCommands() {
             if (!pattern) {
                 throw new Error('Argument of \'pattern=\' cannot be empty');
             }
+            text = text.toString();
+            pattern = pattern.toString();
+            replacer = replacer.toString();
             switch (mode) {
                 case 'literal':
                     return text.replaceAll(pattern, replacer);
@@ -2361,6 +2364,56 @@ export function initDefaultSlashCommands() {
             }),
         ],
         helpString: 'Copies the provided text to the OS clipboard. Returns an empty string.',
+    }));
+
+
+    const promptPostProcessingEnumProvider = () => Array
+        .from(document.getElementById('custom_prompt_post_processing').querySelectorAll('option'))
+        .map(option => new SlashCommandEnumValue(option.value || 'none', option.textContent, enumTypes.enum));
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+        name: 'prompt-post-processing',
+        aliases: ['ppp'],
+        helpString: `
+            <div>
+                Sets a "Prompt Post-Processing" type. Gets the current selection if no value is provided.
+            </div>
+            <div>
+                <strong>Examples:</strong>
+            </div>
+            <ul>
+                <li><pre><code class="language-stscript">/prompt-post-processing | /echo</code></pre></li>
+                <li><pre><code class="language-stscript">/prompt-post-processing single</code></pre></li>
+            </ul>
+        `,
+        namedArgumentList: [],
+        unnamedArgumentList: [
+            SlashCommandArgument.fromProps({
+                description: 'value',
+                typeList: [ARGUMENT_TYPE.STRING],
+                acceptsMultiple: false,
+                isRequired: true,
+                forceEnum: true,
+                enumProvider: promptPostProcessingEnumProvider,
+            }),
+        ],
+        callback: (_args, value) => {
+            const stringValue = String(value ?? '').trim().toLowerCase();
+            if (!stringValue) {
+                return oai_settings.custom_prompt_post_processing || 'none';
+            }
+
+            const validValues = promptPostProcessingEnumProvider().map(option => option.value);
+            if (!validValues.includes(stringValue)) {
+                throw new Error(`Invalid value "${stringValue}". Valid values are: ${validValues.join(', ')}`);
+            }
+
+            // 'none' value must be coerced to an empty string
+            oai_settings.custom_prompt_post_processing = stringValue === 'none' ? '' : stringValue;
+            $('#custom_prompt_post_processing').val(oai_settings.custom_prompt_post_processing);
+            saveSettingsDebounced();
+
+            return oai_settings.custom_prompt_post_processing;
+        },
     }));
 
     registerVariableCommands();
@@ -2864,7 +2917,7 @@ async function runCallback(args, name) {
  */
 function abortCallback({ _abortController, quiet }, reason) {
     if (quiet instanceof SlashCommandClosure) throw new Error('argument \'quiet\' cannot be a closure for command /abort');
-    _abortController.abort((reason ?? '').toString().length == 0 ? '/abort command executed' : reason, !isFalseBoolean(quiet ?? 'true'));
+    _abortController.abort((reason ?? '').toString().length == 0 ? '/abort command executed' : reason, !isFalseBoolean(quiet?.toString() ?? 'true'));
     return '';
 }
 
@@ -4730,7 +4783,7 @@ export async function executeSlashCommandsOnChatInput(text, options = {}) {
                 toastr.error(
                     `${toast}${clickHint}`,
                     'SlashCommandExecutionError',
-                    { escapeHtml: false, timeOut: 10000, onclick: () => callPopup(toast, 'text') },
+                    { escapeHtml: false, timeOut: 10000, onclick: () => callGenericPopup(toast, POPUP_TYPE.TEXT, '', { allowHorizontalScrolling: true, allowVerticalScrolling: true }) },
                 );
             } else {
                 toastr.error(result.errorMessage);
@@ -4787,7 +4840,7 @@ async function executeSlashCommandsWithOptions(text, options = {}) {
             toastr.error(
                 `${toast}${clickHint}`,
                 'SlashCommandParserError',
-                { escapeHtml: false, timeOut: 10000, onclick: () => callPopup(toast, 'text') },
+                { escapeHtml: false, timeOut: 10000, onclick: () => callGenericPopup(toast, POPUP_TYPE.TEXT, '', { allowHorizontalScrolling: true, allowVerticalScrolling: true }) },
             );
             const result = new SlashCommandClosureResult();
             return result;
@@ -4817,7 +4870,7 @@ async function executeSlashCommandsWithOptions(text, options = {}) {
                 toastr.error(
                     `${toast}${clickHint}`,
                     'SlashCommandExecutionError',
-                    { escapeHtml: false, timeOut: 10000, onclick: () => callPopup(toast, 'text') },
+                    { escapeHtml: false, timeOut: 10000, onclick: () => callGenericPopup(toast, POPUP_TYPE.TEXT, '', { allowHorizontalScrolling: true, allowVerticalScrolling: true }) },
                 );
             } else {
                 toastr.error(e.message);
@@ -4878,7 +4931,7 @@ export async function setSlashCommandAutoComplete(textarea, isFloating = false) 
     const parser = new SlashCommandParser();
     const ac = new AutoComplete(
         textarea,
-        () => ac.text[0] == '/',
+        () => ac.text[0] == '/' && (power_user.stscript.autocomplete.state === AUTOCOMPLETE_STATE.ALWAYS || power_user.stscript.autocomplete.state === AUTOCOMPLETE_STATE.MIN_LENGTH && ac.text.length > 2),
         async (text, index) => await parser.getNameAt(text, index),
         isFloating,
     );
@@ -4889,7 +4942,7 @@ const sendTextarea = document.querySelector('#send_textarea');
 setSlashCommandAutoComplete(sendTextarea);
 sendTextarea.addEventListener('input', () => {
     if (sendTextarea.value[0] == '/') {
-        sendTextarea.style.fontFamily = 'monospace';
+        sendTextarea.style.fontFamily = 'var(--monoFontFamily, monospace)';
     } else {
         sendTextarea.style.fontFamily = null;
     }
