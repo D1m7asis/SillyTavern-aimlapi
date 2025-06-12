@@ -18,7 +18,7 @@
 
 ---
 
-SillyTavern 为众多 LLM API（KoboldAI/CPP、Horde、NovelAI、Ooba、Tabby、OpenAI、OpenRouter、 AI/ML API, Claude、Mistral 等）提供统一界面，拥有移动设备友好的布局、视觉小说模式、Automatic1111 & ComfyUI API 图像生成集成、TTS、世界书（lorebooks）、可自定义的 UI、自动翻译、超乎您想象的丰富 Prompt 选项，以及通过第三方扩展实现的无限增长潜力。
+移动设备界面友好，多种人工智能服务或模型支持（KoboldAI/CPP, Horde, NovelAI, Ooba, OpenAI, OpenRouter, Claude, Scale），类似 Galgame 的 老 婆 模 式，Horde SD，文本系统语音生成，世界信息（Lorebooks），可定制的界面，自动翻译，和比你所需要的更多的 Prompt。附带扩展服务，支持文本绘画生成与语音生成和基于向量数据库 的聊天信息总结。
 
 我们有一个[文档网站](https://docs.sillytavern.app/)来回答您的大部分问题并帮助您入门。
 

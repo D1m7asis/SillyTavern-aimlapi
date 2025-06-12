@@ -19,7 +19,7 @@
 
 ---
 
-SillyTavern bietet eine einheitliche Benutzeroberfläche für viele LLM-APIs (KoboldAI/CPP, Horde, NovelAI, Ooba, Tabby, OpenAI, OpenRouter, Claude, Mistral, **AI/ML API** und mehr), ein mobilfreundliches Layout, einen Visual-Novel-Modus, die Integration von Automatic1111 & ComfyUI API zur Bilderzeugung, TTS, WorldInfo (Lorebooks), anpassbare UI, automatische Übersetzung, mehr Eingabeaufforderungsoptionen, als du jemals wolltest oder brauchst, und unendliches Wachstumspotenzial durch Drittanbietererweiterungen.
+SillyTavern bietet eine einheitliche Benutzeroberfläche für viele LLM-APIs (KoboldAI/CPP, Horde, NovelAI, Ooba, Tabby, OpenAI, OpenRouter, Claude, Mistral und mehr), ein mobilfreundliches Layout, einen Visual-Novel-Modus, die Integration von Automatic1111 & ComfyUI API zur Bilderzeugung, TTS, WorldInfo (Lorebooks), anpassbare UI, automatische Übersetzung, mehr Eingabeaufforderungsoptionen, als du jemals wolltest oder brauchst, und unendliches Wachstumspotenzial durch Drittanbietererweiterungen.
 
 Wir haben eine [Dokumentationswebsite](https://docs.sillytavern.app/), um die meisten deiner Fragen zu beantworten und dir den Einstieg zu erleichtern.
 
@@ -58,7 +58,6 @@ Die Hardwareanforderungen sind minimal: Es läuft auf allem, was NodeJS 18 oder 
 * [KoboldCpp](https://github.com/LostRuins/koboldcpp) - ein Favorit der Community, um GGUF-Modelle lokal auszuführen
 * [tabbyAPI](https://github.com/theroyallab/tabbyAPI) - eine beliebte, portable, speicherplatzoptimierte und lokal gehostete exl2 Inferenz-API
 * [OpenRouter](https://openrouter.ai) - eine einzige API für viele Cloud-Anbieter (OpenAI, Claude, Meta Llama usw.) sowie beliebte Community-Modelle.
-* [AI/ML API](https://aimlapi.com/app/?utm_source=sillytavern&utm_medium=github&utm_campaign=integration) - bietet 300+ KI-Modelle, darunter Deepseek, Gemini und ChatGPT, für Chat-Completion, Text-Completion und Bildgenerierung auf Enterprise-Niveau.
 
 ## Fragen oder Vorschläge?
 

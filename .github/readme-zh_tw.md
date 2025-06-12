@@ -18,7 +18,7 @@
 
 ---
 
-SillyTavern 提供一個統一的前端介面，整合多種大型語言模型的 API（包括：KoboldAI/CPP、Horde、NovelAI、Ooba、Tabby、OpenAI、OpenRouter、Claude、Mistral、**AI/ML API** 等）。同時具備對行動裝置友善的佈局、視覺小說模式（Visual Novel Mode）、Automatic1111 與 ComfyUI 的影像生成 API 整合、TTS（語音合成）、世界資訊（Lorebook）、可自訂 UI、自動翻譯功能，以及強大的提示詞（prompt）設定選項和無限的第三方擴充潛力。
+SillyTavern 提供一個統一的前端介面，整合多種大型語言模型的 API（包括：KoboldAI/CPP、Horde、NovelAI、Ooba、Tabby、OpenAI、OpenRouter、Claude、Mistral 等）。同時具備對行動裝置友善的佈局、視覺小說模式（Visual Novel Mode）、Automatic1111 與 ComfyUI 的影像生成 API 整合、TTS（語音合成）、世界資訊（Lorebook）、可自訂 UI、自動翻譯功能，以及強大的提示詞（prompt）設定選項和無限的第三方擴充潛力。
 
 我們擁有一個 [官方文件網站](https://docs.sillytavern.app/) 可以幫助解答絕大多數的使用問題，並幫助您順利入門。
 
@@ -57,7 +57,6 @@ SillyTavern 的硬體需求相當低。任何能夠運行 NodeJS 18 或更高版
 * [KoboldCpp](https://github.com/LostRuins/koboldcpp)：社群推崇的選擇，可在本地運行 GGUF 模型
 * [tabbyAPI](https://github.com/theroyallab/tabbyAPI)：一個流行且輕量的本地託管 exl2 推理 API
 * [OpenRouter](https://openrouter.ai)：提供多個雲端 LLM 提供商（如 OpenAI、Claude、Meta Llama 等）及熱門社群模型的單一 API
-* [AI/ML API](https://aimlapi.com/app/?utm_source=sillytavern&utm_medium=github&utm_campaign=integration)：提供包含 Deepseek、Gemini、ChatGPT 在內的 300+ 模型，可進行聊天補完、文本補完與圖像生成，並具備企業級速率限制與穩定度.
 
 ## 有任何問題或建議？
 
