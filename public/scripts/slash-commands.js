@@ -4220,7 +4220,6 @@ function getModelOptions(quiet) {
         { id: 'generic_model_textgenerationwebui', api: 'textgenerationwebui', type: textgen_types.GENERIC },
         { id: 'custom_model_textgenerationwebui', api: 'textgenerationwebui', type: textgen_types.OOBA },
         { id: 'model_togetherai_select', api: 'textgenerationwebui', type: textgen_types.TOGETHERAI },
-        { id: 'aimlapi_model', api: 'textgenerationwebui', type: textgen_types.AIMLAPI },
         { id: 'openrouter_model', api: 'textgenerationwebui', type: textgen_types.OPENROUTER },
         { id: 'model_infermaticai_select', api: 'textgenerationwebui', type: textgen_types.INFERMATICAI },
         { id: 'model_dreamgen_select', api: 'textgenerationwebui', type: textgen_types.DREAMGEN },
