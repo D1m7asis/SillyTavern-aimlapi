@@ -139,7 +139,7 @@ const INPUT_MAP = {
     [SECRET_KEYS.NANOGPT]: '#api_key_nanogpt',
     [SECRET_KEYS.GENERIC]: '#api_key_generic',
     [SECRET_KEYS.DEEPSEEK]: '#api_key_deepseek',
-    [SECRET_KEYS.AIMLAPI]: '.api_key_aimlapi',
+    [SECRET_KEYS.AIMLAPI]: '#api_key_aimlapi',
     [SECRET_KEYS.XAI]: '#api_key_xai',
     [SECRET_KEYS.VERTEXAI_SERVICE_ACCOUNT]: '#vertexai_service_account_json',
 };

@@ -20,7 +20,6 @@ import { ENCODE_TOKENIZERS, TEXTGEN_TOKENIZERS, getTextTokens, tokenizers } from
 import { getSortableDelay, onlyUnique, arraysEqual } from './utils.js';
 
 export const textgen_types = {
-    AIMLAPI: 'aimlapi',
     OOBA: 'ooba',
     MANCER: 'mancer',
     VLLM: 'vllm',
@@ -51,7 +50,6 @@ const {
     INFERMATICAI,
     DREAMGEN,
     OPENROUTER,
-    AIMLAPI,
     KOBOLDCPP,
     HUGGINGFACE,
     FEATHERLESS,
@@ -116,7 +114,6 @@ export let TOGETHERAI_SERVER = 'https://api.together.xyz';
 export let INFERMATICAI_SERVER = 'https://api.totalgpt.ai';
 export let DREAMGEN_SERVER = 'https://dreamgen.com';
 export let OPENROUTER_SERVER = 'https://openrouter.ai/api';
-export let AIMLAPI_SERVER = 'https://api.aimlapi.com/v1';
 export let FEATHERLESS_SERVER = 'https://api.featherless.ai/v1';
 
 export const SERVER_INPUTS = {
@@ -200,7 +197,6 @@ const settings = {
     togetherai_model: 'Gryphe/MythoMax-L2-13b',
     infermaticai_model: '',
     ollama_model: '',
-    aimlapi_model: 'gpt-4o-mini-2024-07-18',
     openrouter_model: 'openrouter/auto',
     openrouter_providers: [],
     vllm_model: '',
@@ -345,8 +341,6 @@ export function getTextGenServer(type = null) {
             return DREAMGEN_SERVER;
         case OPENROUTER:
             return OPENROUTER_SERVER;
-        case AIMLAPI:
-            return AIMLAPI_SERVER;
         default:
             return settings.server_urls[selectedType] ?? '';
     }
@@ -1199,8 +1193,6 @@ export function getTextGenModel() {
             return settings.dreamgen_model;
         case OPENROUTER:
             return settings.openrouter_model;
-        case AIMLAPI:
-            return settings.aimlapi_model;
         case VLLM:
             return settings.vllm_model;
         case APHRODITE:

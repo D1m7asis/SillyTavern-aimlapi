@@ -263,7 +263,6 @@ import {
     initTextGenModels,
     loadTabbyModels,
     loadGenericModels,
-    loadAimlapiModels,
 } from './scripts/textgen-models.js';
 import { appendFileContent, hasPendingFileAttachment, populateFileAttachment, decodeStyleTags, encodeStyleTags, isExternalMediaAllowed, getCurrentEntityId, preserveNeutralChat, restoreNeutralChat, formatCreatorNotes, initChatUtilities } from './scripts/chats.js';
 import { getPresetManager, initPresetManager } from './scripts/preset-manager.js';
@@ -1288,9 +1287,6 @@ async function getStatusTextgen() {
         } else if (textgen_settings.type === textgen_types.OPENROUTER) {
             loadOpenRouterModels(data?.data);
             setOnlineStatus(textgen_settings.openrouter_model);
-        } else if (textgen_settings.type === textgen_types.AIMLAPI) {
-            loadAimlapiModels(data?.data);
-            setOnlineStatus(textgen_settings.aimlapi_model);
         } else if (textgen_settings.type === textgen_types.VLLM) {
             loadVllmModels(data?.data);
             setOnlineStatus(textgen_settings.vllm_model);
@@ -9701,17 +9697,6 @@ export const CONNECT_API_MAP = {
         button: '#api_button_textgenerationwebui',
         type: textgen_types.OPENROUTER,
     },
-    // Ditto for AI/ML API
-    'aimlapi': {
-        selected: 'openai',
-        button: '#api_button_openai',
-        source: chat_completion_sources.AIMLAPI,
-    },
-    'aimlapi-text': {
-        selected: 'textgenerationwebui',
-        button: '#api_button_textgenerationwebui',
-        type: textgen_types.AIMLAPI,
-    },
 };
 
 // Collect all unique API names in an array
@@ -11180,7 +11165,6 @@ jQuery(async function () {
             { id: 'api_key_featherless', secret: SECRET_KEYS.FEATHERLESS },
             { id: 'api_key_huggingface', secret: SECRET_KEYS.HUGGINGFACE },
             { id: 'api_key_generic', secret: SECRET_KEYS.GENERIC },
-            { id: 'api_key_aimlapi-tg', secret: SECRET_KEYS.AIMLAPI },
         ];
 
         for (const key of keys) {

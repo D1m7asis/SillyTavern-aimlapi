@@ -11,7 +11,7 @@ import {
     OPENROUTER_KEYS,
     VLLM_KEYS,
     FEATHERLESS_KEYS,
-    OPENAI_KEYS, AIMLAPI_HEADERS,
+    OPENAI_KEYS,
 } from '../../constants.js';
 import { forwardFetchResponse, trimV1, getConfigValue } from '../../util.js';
 import { setAdditionalHeaders } from '../../additional-headers.js';
@@ -121,7 +121,6 @@ router.post('/status', async function (request, response) {
             case TEXTGEN_TYPES.LLAMACPP:
             case TEXTGEN_TYPES.INFERMATICAI:
             case TEXTGEN_TYPES.OPENROUTER:
-            case TEXTGEN_TYPES.AIMLAPI:
             case TEXTGEN_TYPES.FEATHERLESS:
                 url += '/v1/models';
                 break;
@@ -309,7 +308,6 @@ router.post('/generate', async function (request, response) {
             case TEXTGEN_TYPES.OLLAMA:
                 url += '/api/generate';
                 break;
-            case TEXTGEN_TYPES.AIMLAPI:
             case TEXTGEN_TYPES.OPENROUTER:
                 url += '/v1/chat/completions';
                 break;
@@ -384,30 +382,6 @@ router.post('/generate', async function (request, response) {
                 raw: true,
                 options: _.pickBy(request.body, (_, key) => OLLAMA_KEYS.includes(key)),
             });
-        }
-
-        if (request.body.api_type === TEXTGEN_TYPES.AIMLAPI) {
-            if (!Array.isArray(request.body.messages)) {
-                const prompt = typeof request.body.messages === 'string'
-                    ? request.body.messages
-                    : request.body.prompt;
-                if (typeof prompt === 'string') {
-                    request.body.messages = [{ role: 'user', content: prompt }];
-                } else {
-                    request.body.messages = [];
-                }
-            } else {
-                request.body.messages = request.body.messages.map(m =>
-                    typeof m === 'string' ? { role: 'user', content: m } : m,
-                );
-            }
-            delete request.body.prompt;
-            request.body.headers = {
-                ...(request.body.headers || {}),
-                ...AIMLAPI_HEADERS,
-            };
-            args.body = JSON.stringify(request.body);
-            console.debug('[AI/ML API] Adjusted request:', request.body);
         }
 
         if (request.body.api_type === TEXTGEN_TYPES.OLLAMA && request.body.stream) {
