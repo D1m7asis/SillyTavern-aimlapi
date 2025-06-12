@@ -5099,7 +5099,7 @@ async function onModelChange() {
             .trigger('input');
 
         oai_settings.openai_max_context = Number($('#openai_max_context').val());
-        oai_settings.temp_openai        = Number($('#temp_openai').val());
+        oai_settings.temp_openai = Number($('#temp_openai').val());
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.COHERE) {
@@ -5382,7 +5382,7 @@ async function onConnectButtonClick(e) {
             await writeSecret(SECRET_KEYS.AIMLAPI, api_key_aimlapi);
         }
 
-        if (!secret_state[SECRET_KEYS.AIMLAPI] && !oai_settings.reverse_proxy) {
+        if (!secret_state[SECRET_KEYS.AIMLAPI]) {
             console.log('No secret key saved for AI/ML API');
             return;
         }

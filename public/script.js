@@ -9701,6 +9701,17 @@ export const CONNECT_API_MAP = {
         button: '#api_button_textgenerationwebui',
         type: textgen_types.OPENROUTER,
     },
+    // Ditto for AI/ML API
+    'aimlapi': {
+        selected: 'openai',
+        button: '#api_button_openai',
+        source: chat_completion_sources.AIMLAPI,
+    },
+    'aimlapi-text': {
+        selected: 'textgenerationwebui',
+        button: '#api_button_textgenerationwebui',
+        type: textgen_types.AIMLAPI,
+    },
 };
 
 // Collect all unique API names in an array
