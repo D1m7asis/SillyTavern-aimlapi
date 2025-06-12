@@ -8,7 +8,7 @@ import express from 'express';
 import { getConfigValue, mergeObjectWithYaml, excludeKeysByYaml, trimV1 } from '../util.js';
 import { setAdditionalHeaders } from '../additional-headers.js';
 import { readSecret, SECRET_KEYS } from './secrets.js';
-import { OPENROUTER_HEADERS } from '../constants.js';
+import { AIMLAPI_HEADERS, OPENROUTER_HEADERS } from '../constants.js';
 
 export const router = express.Router();
 
@@ -134,6 +134,7 @@ router.post('/caption-image', async (request, response) => {
 
         if (request.body.api === 'aimlapi') {
             apiUrl = 'https://api.aimlapi.com/v1/chat/completions';
+            Object.assign(headers, AIMLAPI_HEADERS);
         }
 
         if (request.body.api === 'groq') {

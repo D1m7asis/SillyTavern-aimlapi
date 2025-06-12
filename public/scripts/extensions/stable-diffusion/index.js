@@ -3379,94 +3379,37 @@ async function generateOpenAiImage(prompt, signal) {
  * - Returns { format: 'png', data: '<base64 string>' }, ready for saveBase64AsFile().
  */
 async function generateAimlapiImage(prompt, signal) {
-    // 1) Normalize UI model name → real AIMLAPI ID
-    const uiModel = extension_settings.sd.model;
-    const aliasMap = {
-        'imagegen 3.0':        'imagen-3.0-generate-002',
-        'flux/dev i2i':        'flux/dev/image-to-image',
-    // добавьте сюда другие UI-алиасы при необходимости
-    };
-    const model = aliasMap[uiModel.toLowerCase()] ?? uiModel;
-
-    // 2) Decide which params this model supports
-    const m = model.toLowerCase();
+    const model = extension_settings.sd.model.toLowerCase();
     const isSdLike =
-    m.startsWith('flux/') ||
-    m.startsWith('stable') ||
-    m === 'recraft-v3' ||
-    m === 'triposr';
+        model.startsWith('flux/') ||
+        model.startsWith('stable') ||
+        model === 'recraft-v3' ||
+        model === 'triposr';
 
-    // 3) Build request body
     const body = { prompt, model };
     if (isSdLike) {
-    // SD-style models: use steps/guidance/width/height/seed
-        body.steps    = clamp(extension_settings.sd.steps, 1, 50);
-        body.guidance = clamp(extension_settings.sd.scale, 1.5, 5);
-        body.width    = clamp(extension_settings.sd.width,  256, 1440);
-        body.height   = clamp(extension_settings.sd.height, 256, 1440);
-        if (extension_settings.sd.seed >= 0) {
-            body.seed = extension_settings.sd.seed;
-        }
+        body.steps    = clamp(extension_settings.sd.steps,   1,   50);
+        body.guidance = clamp(extension_settings.sd.scale,   1.5, 5);
+        body.width    = clamp(extension_settings.sd.width,   256, 1440);
+        body.height   = clamp(extension_settings.sd.height,  256, 1440);
+        if (extension_settings.sd.seed >= 0) body.seed = extension_settings.sd.seed;
     } else {
-    // DALL·E/Imagen-style models: use n/size/quality/style
         body.n       = 1;
         body.size    = `${extension_settings.sd.width}x${extension_settings.sd.height}`;
         body.quality = extension_settings.sd.openai_quality;
         body.style   = extension_settings.sd.openai_style;
     }
 
-    // 4) Fetch from your backend endpoint
-    const res = await fetch('/api/aimlapi/generate-image', {
+    const res = await fetch('/api/sd/aimlapi/generate-image', {
         method: 'POST',
         headers: getRequestHeaders(),
         signal,
         body: JSON.stringify(body),
     });
-    if (!res.ok) {
-        throw new Error(await res.text());
-    }
-    const json = await res.json();
+    if (!res.ok) throw new Error(await res.text());
 
-    // 5) Pull out the image object (Flux uses json.images, OpenAI uses json.data)
-    const imgObj =
-    Array.isArray(json.images) && json.images[0] ? json.images[0]
-        : Array.isArray(json.data)   && json.data[0]   ? json.data[0]
-            : null;
-    if (!imgObj) {
-        throw new Error('Endpoint did not return image data.');
-    }
-
-    // 6) Convert to base64 for saveBase64AsFile()
-    let base64;
-    if (imgObj.b64_json || imgObj.base64) {
-        base64 = imgObj.b64_json ?? imgObj.base64;
-    } else if (model === 'imagen-3.0-generate-002') {
-        base64 = imgObj.url;
-    } else if (imgObj.url) {
-    // browser-side fetch+FileReader
-        const resp2 = await fetch(imgObj.url);
-        if (!resp2.ok) throw new Error('Failed to fetch generated image URL');
-        const blob = await resp2.blob();
-        base64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                // reader.result === "data:image/png;base64,AAAA..."
-                const parts = (reader.result || '').split(',');
-                resolve(parts[1] || '');
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-    } else {
-        throw new Error('Unsupported image format from AIMLAPI');
-    }
-
-    // 7) Return exactly what your downstream code needs:
-    //    { format: 'png', data: '<base64>' }
-    return {
-        format: 'png',
-        data:   base64,
-    };
+    const { format, data } = await res.json();
+    return { format, data };
 }
 
 /**

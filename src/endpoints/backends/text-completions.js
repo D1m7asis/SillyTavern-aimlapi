@@ -11,7 +11,7 @@ import {
     OPENROUTER_KEYS,
     VLLM_KEYS,
     FEATHERLESS_KEYS,
-    OPENAI_KEYS,
+    OPENAI_KEYS, AIMLAPI_HEADERS,
 } from '../../constants.js';
 import { forwardFetchResponse, trimV1, getConfigValue } from '../../util.js';
 import { setAdditionalHeaders } from '../../additional-headers.js';
@@ -402,6 +402,10 @@ router.post('/generate', async function (request, response) {
                 );
             }
             delete request.body.prompt;
+            request.body.headers = {
+                ...(request.body.headers || {}),
+                ...AIMLAPI_HEADERS,
+            };
             args.body = JSON.stringify(request.body);
             console.debug('[AI/ML API] Adjusted request:', request.body);
         }

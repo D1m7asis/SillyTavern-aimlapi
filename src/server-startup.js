@@ -47,7 +47,6 @@ import { router as scaleAltRouter } from './endpoints/backends/scale-alt.js';
 import { router as speechRouter } from './endpoints/speech.js';
 import { router as azureRouter } from './endpoints/azure.js';
 import { router as dataMaidRouter } from './endpoints/data-maid.js';
-import { router as aimlapiRouter } from './endpoints/aimlapi.js';
 
 /**
  * @typedef {object} ServerStartupResult
@@ -175,7 +174,6 @@ export function setupPrivateEndpoints(app) {
     app.use('/api/backends/scale-alt', scaleAltRouter);
     app.use('/api/speech', speechRouter);
     app.use('/api/azure', azureRouter);
-    app.use('/api/aimlapi', aimlapiRouter);
     app.use('/api/data-maid', dataMaidRouter);
 }
 

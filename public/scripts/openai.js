@@ -458,7 +458,7 @@ const oai_settings = {
     nanogpt_model: 'gpt-4o-mini',
     zerooneai_model: 'yi-large',
     deepseek_model: 'deepseek-chat',
-    aimlapi_model: 'gpt-4o-mini-2024-07-18',
+    aimlapi_model: 'gpt-4-turbo',
     xai_model: 'grok-3-beta',
     pollinations_model: 'openai',
     custom_model: '',
@@ -3622,9 +3622,9 @@ function loadOpenAISettings(data, settings) {
     $(`#model_deepseek_select option[value="${oai_settings.deepseek_model}"`).prop('selected', true);
     $('#model_01ai_select').val(oai_settings.zerooneai_model);
     $('#model_aimlapi_select').val(oai_settings.aimlapi_model);
+    $(`#model_aimlapi_select option[value="${oai_settings.aimlapi_model}"`).prop('selected', true);
     $('#model_xai_select').val(oai_settings.xai_model);
     $(`#model_xai_select option[value="${oai_settings.xai_model}"`).prop('selected', true);
-    $(`#model_aimlapi_select option[value="${oai_settings.aimlapi_model}"`).prop('selected', true);
     $('#model_pollinations_select').val(oai_settings.pollinations_model);
     $(`#model_pollinations_select option[value="${oai_settings.pollinations_model}"`).prop('selected', true);
     $('#custom_model_id').val(oai_settings.custom_model);
@@ -5055,15 +5055,27 @@ async function onModelChange() {
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.AIMLAPI) {
+        let maxContext;
         if (oai_settings.max_context_unlocked) {
-            $('#openai_max_context').attr('max', unlocked_max);
+            maxContext = unlocked_max;
         } else {
-            $('#openai_max_context').attr('max', max_32k);
+            const model = model_list.find(m => m.id === oai_settings.aimlapi_model);
+            maxContext = (model?.info?.contextLength ?? model?.context_length) || max_32k;
+            console.log('[AI/ML API] Model CTX:', model?.info?.contextLength);
         }
 
-        oai_settings.openai_max_context = Math.min(Number($('#openai_max_context').attr('max')), oai_settings.openai_max_context);
-        $('#openai_max_context').val(oai_settings.openai_max_context).trigger('input');
-        $('#temp_openai').attr('max', oai_max_temp).val(oai_settings.temp_openai).trigger('input');
+        $('#openai_max_context')
+            .prop('max', maxContext)
+            .val(Math.min(Number(oai_settings.openai_max_context), maxContext))
+            .trigger('input');
+
+        $('#temp_openai')
+            .prop('max', oai_max_temp)
+            .val(Number(oai_settings.temp_openai))
+            .trigger('input');
+
+        oai_settings.openai_max_context = Number($('#openai_max_context').val());
+        oai_settings.temp_openai        = Number($('#temp_openai').val());
     }
 
     if (oai_settings.chat_completion_source === chat_completion_sources.COHERE) {

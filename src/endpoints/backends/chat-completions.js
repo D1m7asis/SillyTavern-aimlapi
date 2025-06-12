@@ -4,6 +4,7 @@ import express from 'express';
 import fetch from 'node-fetch';
 
 import {
+    AIMLAPI_HEADERS,
     CHAT_COMPLETION_SOURCES,
     GEMINI_SAFETY,
     OPENROUTER_HEADERS,
@@ -1024,10 +1025,10 @@ async function sendXaiRequest(request, response) {
  * @param {express.Response} response Express response
  */
 async function sendAimlapiRequest(request, response) {
-    const apiUrl = new URL(request.body.reverse_proxy || API_AIMLAPI).toString();
-    const apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.AIMLAPI);
+    const apiUrl = API_AIMLAPI;
+    const apiKey = readSecret(request.user.directories, SECRET_KEYS.AIMLAPI);
 
-    if (!apiKey && !request.body.reverse_proxy) {
+    if (!apiKey) {
         console.warn('AI/ML API key is missing.');
         return response.status(400).send({ error: true });
     }
@@ -1074,6 +1075,7 @@ async function sendAimlapiRequest(request, response) {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + apiKey,
+                ...AIMLAPI_HEADERS,
             },
             body: JSON.stringify(requestBody),
             signal: controller.signal,
@@ -1154,9 +1156,9 @@ router.post('/status', async function (request, statusResponse) {
         apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.XAI);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.AIMLAPI) {
-        api_url = new URL(request.body.reverse_proxy || API_AIMLAPI);
-        api_key_openai = request.body.reverse_proxy ? request.body.proxy_password : readSecret(request.user.directories, SECRET_KEYS.AIMLAPI);
-        headers = {};
+        apiUrl = API_AIMLAPI;
+        apiKey = readSecret(request.user.directories, SECRET_KEYS.AIMLAPI);
+        headers = { ...AIMLAPI_HEADERS };
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.POLLINATIONS) {
         apiUrl = 'https://text.pollinations.ai';
         apiKey = 'NONE';
