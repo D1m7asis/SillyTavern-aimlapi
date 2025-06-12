@@ -2405,7 +2405,7 @@ async function sendOpenAIRequest(type, messages, signal) {
         delete generate_data.max_tokens;
     }
 
-    if ((isOAI || isOpenRouter || isMistral || isCustom || isCohere || isNano || isXAI || isAimlapi || isPollinations) && oai_settings.seed >= 0) {
+    if ((isOAI || isOpenRouter || isMistral || isCustom || isCohere || isNano || isXAI || isPollinations) && oai_settings.seed >= 0) {
         generate_data['seed'] = oai_settings.seed;
     }
 
