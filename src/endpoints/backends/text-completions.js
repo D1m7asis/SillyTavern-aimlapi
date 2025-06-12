@@ -321,8 +321,6 @@ router.post('/generate', async function (request, response) {
             timeout: 0,
         };
 
-        console.log('[AI/ML API] Arguments for request:', args);
-
         setAdditionalHeaders(request, args, baseUrl);
 
         if (request.body.api_type === TEXTGEN_TYPES.TOGETHERAI) {
