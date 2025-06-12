@@ -11169,6 +11169,7 @@ jQuery(async function () {
             { id: 'api_key_featherless', secret: SECRET_KEYS.FEATHERLESS },
             { id: 'api_key_huggingface', secret: SECRET_KEYS.HUGGINGFACE },
             { id: 'api_key_generic', secret: SECRET_KEYS.GENERIC },
+            { id: 'api_key_aimlapi-tg', secret: SECRET_KEYS.AIMLAPI },
         ];
 
         for (const key of keys) {
