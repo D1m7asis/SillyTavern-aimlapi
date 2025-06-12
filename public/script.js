@@ -208,6 +208,7 @@ import {
 } from './scripts/tags.js';
 import {
     SECRET_KEYS,
+    initSecrets,
     readSecretState,
     secret_state,
     writeSecret,
@@ -686,16 +687,8 @@ export const extension_prompt_roles = {
 
 export const MAX_INJECTION_DEPTH = 10000;
 
-const SAFETY_CHAT = [
-    {
-        name: systemUserName,
-        force_avatar: system_avatar,
-        is_system: true,
-        is_user: false,
-        create_date: 0,
-        mes: 'You deleted a character/chat and arrived back here for safety reasons! Pick another character!',
-    },
-];
+// Initialized in getSystemMessages()
+const SAFETY_CHAT = [];
 
 export let system_messages = {};
 
@@ -782,6 +775,16 @@ async function getSystemMessages() {
             },
         },
     };
+
+    const safetyMessage = {
+        name: systemUserName,
+        force_avatar: system_avatar,
+        is_system: true,
+        is_user: false,
+        create_date: 0,
+        mes: t`You deleted a character/chat and arrived back here for safety reasons! Pick another character!`,
+    };
+    SAFETY_CHAT.splice(0, SAFETY_CHAT.length, safetyMessage);
 }
 
 async function getClientVersion() {
@@ -989,6 +992,7 @@ async function firstLoadInit() {
     reloadMarkdownProcessor();
     applyBrowserFixes();
     await getClientVersion();
+    await initSecrets();
     await readSecretState();
     await initLocales();
     initChatUtilities();
