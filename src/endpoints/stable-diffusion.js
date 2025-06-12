@@ -1361,6 +1361,7 @@ aimlapi.post('/models', async (request, response) => {
             return response.sendStatus(500);
         }
 
+        /** @type {any} */
         const data = await modelsResponse.json();
         const models = (data.data || [])
             .filter(model =>
@@ -1385,6 +1386,8 @@ aimlapi.post('/generate-image', async (req, res) => {
         const key = readSecret(req.user.directories, SECRET_KEYS.AIMLAPI);
         if (!key) return res.sendStatus(400);
 
+        console.debug('AI/ML API image request:', req.body);
+
         const apiRes = await fetch('https://api.aimlapi.com/v1/images/generations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, ...AIMLAPI_HEADERS },
@@ -1394,6 +1397,7 @@ aimlapi.post('/generate-image', async (req, res) => {
             const err = await apiRes.text();
             return res.status(500).send(err);
         }
+        /** @type {any} */
         const data = await apiRes.json();
 
         const imgObj = Array.isArray(data.images) ? data.images[0] : data.data?.[0];
@@ -1412,7 +1416,6 @@ aimlapi.post('/generate-image', async (req, res) => {
         }
 
         return res.json({ format: 'png', data: base64 });
-
     } catch (e) {
         console.error(e);
         res.status(500).send('Internal error');
