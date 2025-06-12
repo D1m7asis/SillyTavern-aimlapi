@@ -2260,7 +2260,7 @@ async function sendOpenAIRequest(type, messages, signal) {
     }
 
     // Proxy is only supported for Claude, OpenAI, Mistral, Google MakerSuite, and Vertex AI
-    if (oai_settings.reverse_proxy && [chat_completion_sources.CLAUDE, chat_completion_sources.OPENAI, chat_completion_sources.MISTRALAI, chat_completion_sources.MAKERSUITE, chat_completion_sources.VERTEXAI, chat_completion_sources.DEEPSEEK, chat_completion_sources.AIMLAPI, chat_completion_sources.XAI].includes(oai_settings.chat_completion_source)) {
+    if (oai_settings.reverse_proxy && [chat_completion_sources.CLAUDE, chat_completion_sources.OPENAI, chat_completion_sources.MISTRALAI, chat_completion_sources.MAKERSUITE, chat_completion_sources.VERTEXAI, chat_completion_sources.DEEPSEEK, chat_completion_sources.XAI].includes(oai_settings.chat_completion_source)) {
         await validateReverseProxy();
         generate_data['reverse_proxy'] = oai_settings.reverse_proxy;
         generate_data['proxy_password'] = oai_settings.proxy_password;
@@ -4784,6 +4784,10 @@ async function onModelChange() {
     }
 
     if ($(this).is('#model_aimlapi_select')) {
+        if (!value) {
+            console.debug('Null AI/ML model selected. Ignoring.');
+            return;
+        }
         console.log('AI/ML model changed to', value);
         oai_settings.aimlapi_model = value;
     }
