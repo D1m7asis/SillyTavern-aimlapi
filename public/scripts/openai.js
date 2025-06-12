@@ -3935,6 +3935,7 @@ async function saveOpenAIPreset(name, settings, triggerUi = true) {
         zerooneai_model: settings.zerooneai_model,
         xai_model: settings.xai_model,
         pollinations_model: settings.pollinations_model,
+        aimlapi_model: settings.aimlapi_model,
         custom_model: settings.custom_model,
         custom_url: settings.custom_url,
         custom_include_body: settings.custom_include_body,
