@@ -201,7 +201,6 @@ const settings = {
     infermaticai_model: '',
     ollama_model: '',
     aimlapi_model: 'gpt-4o-mini-2024-07-18',
-    aimlapi_providers: [],
     openrouter_model: 'openrouter/auto',
     openrouter_providers: [],
     vllm_model: '',
@@ -564,7 +563,6 @@ export function loadTextGenSettings(data, loadedSettings) {
 
     $('#textgen_type').val(settings.type);
     $('#openrouter_providers_text').val(settings.openrouter_providers).trigger('change');
-    $('#aimlapi_providers_text').val(settings.aimlapi_providers).trigger('change');
     showTypeSpecificControls(settings.type);
     BIAS_CACHE.delete(BIAS_KEY);
     displayLogitBias(settings.logit_bias, BIAS_KEY);
@@ -871,19 +869,6 @@ jQuery(function () {
     }
 
     $('#textgen_logit_bias_new_entry').on('click', () => createNewLogitBiasEntry(settings.logit_bias, BIAS_KEY));
-
-    $('#aimlapi_providers_text').on('change', function () {
-        const selectedProviders = $(this).val();
-
-        // Not a multiple select?
-        if (!Array.isArray(selectedProviders)) {
-            return;
-        }
-
-        settings.aimlapi_providers = selectedProviders;
-
-        saveSettingsDebounced();
-    });
 
     $('#openrouter_providers_text').on('change', function () {
         const selectedProviders = $(this).val();
