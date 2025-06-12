@@ -103,6 +103,7 @@ const FRIENDLY_NAMES = {
     [SECRET_KEYS.SERPER]: 'Serper',
     [SECRET_KEYS.FALAI]: 'FAL.AI',
     [SECRET_KEYS.AZURE_TTS]: 'Azure TTS',
+    [SECRET_KEYS.AIMLAPI]: 'AI/ML API',
 };
 
 const INPUT_MAP = {
