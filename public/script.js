@@ -555,6 +555,10 @@ export const event_types = {
     TOOL_CALLS_PERFORMED: 'tool_calls_performed',
     TOOL_CALLS_RENDERED: 'tool_calls_rendered',
     CHARACTER_MANAGEMENT_DROPDOWN: 'charManagementDropdown',
+    SECRET_WRITTEN: 'secret_written',
+    SECRET_DELETED: 'secret_deleted',
+    SECRET_ROTATED: 'secret_rotated',
+    SECRET_EDITED: 'secret_edited',
 };
 
 export const eventSource = new EventEmitter([event_types.APP_READY]);
@@ -2739,7 +2743,7 @@ export function addOneMessage(mes, { type = 'normal', insertAfter = null, scroll
 
 /**
  * Returns the URL of the avatar for the given character Id.
- * @param {number} characterId Character Id
+ * @param {number|string} characterId Character Id
  * @returns {string} Avatar URL
  */
 export function getCharacterAvatar(characterId) {

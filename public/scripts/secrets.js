@@ -1,5 +1,5 @@
 import { DOMPurify, moment } from '../lib.js';
-import { getRequestHeaders } from '../script.js';
+import { event_types, eventSource, getRequestHeaders } from '../script.js';
 import { t } from './i18n.js';
 import { chat_completion_sources } from './openai.js';
 import { callGenericPopup, Popup, POPUP_TYPE } from './popup.js';
@@ -306,6 +306,7 @@ export async function writeSecret(key, value, label) {
         // Clear the input field
         $(INPUT_MAP[key]).val('').trigger('input');
         await readSecretState();
+        await eventSource.emit(event_types.SECRET_WRITTEN, key);
         return id;
     } catch (error) {
         console.error(`Could not write secret value: ${key}`, error);
@@ -330,6 +331,7 @@ export async function deleteSecret(key, id) {
             await readSecretState();
             // Force reconnection to the API with the new key
             $('#main_api').trigger('change');
+            await eventSource.emit(event_types.SECRET_DELETED, key);
         }
     } catch (error) {
         console.error(`Could not delete secret value: ${key}`, error);
@@ -401,6 +403,7 @@ export async function rotateSecret(key, id) {
             await readSecretState();
             // Force reconnection to the API with the new key
             $('#main_api').trigger('change');
+            await eventSource.emit(event_types.SECRET_ROTATED, key);
         }
     } catch (error) {
         console.error(`Could not rotate secret value: ${key}`, error);
@@ -423,6 +426,7 @@ export async function renameSecret(key, id, label) {
 
         if (response.ok) {
             await readSecretState();
+            await eventSource.emit(event_types.SECRET_EDITED, key);
         }
     } catch (error) {
         console.error(`Could not rename secret value: ${key}`, error);

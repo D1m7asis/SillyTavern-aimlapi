@@ -41,7 +41,7 @@ import {
     stringFormat,
 } from '../../utils.js';
 import { getMessageTimeStamp, humanizedDateTime } from '../../RossAscends-mods.js';
-import { SECRET_KEYS, secret_state, writeSecret } from '../../secrets.js';
+import { SECRET_KEYS, secret_state } from '../../secrets.js';
 import { getNovelAnlas, getNovelUnlimitedImageGeneration, loadNovelSubscriptionData } from '../../nai-settings.js';
 import { getMultimodalCaption } from '../shared.js';
 import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
@@ -53,7 +53,7 @@ import {
 } from '../../slash-commands/SlashCommandArgument.js';
 import { debounce_timeout } from '../../constants.js';
 import { SlashCommandEnumValue } from '../../slash-commands/SlashCommandEnumValue.js';
-import { callGenericPopup, Popup, POPUP_RESULT, POPUP_TYPE } from '../../popup.js';
+import { callGenericPopup, Popup, POPUP_TYPE } from '../../popup.js';
 import { commonEnumProviders } from '../../slash-commands/SlashCommandCommonEnumsProvider.js';
 import { ToolManager } from '../../tool-calling.js';
 import { MacrosParser } from '../../macros.js';
@@ -1143,46 +1143,6 @@ function onHFModelInput() {
 function onComfyWorkflowChange() {
     extension_settings.sd.comfy_workflow = $('#sd_comfy_workflow').find(':selected').val();
     saveSettingsDebounced();
-}
-
-async function onApiKeyClick(popupText, secretKey) {
-    const key = await callGenericPopup(popupText, POPUP_TYPE.INPUT, '', {
-        customButtons: [{
-            text: 'Remove Key',
-            appendAtEnd: true,
-            result: POPUP_RESULT.NEGATIVE,
-            action: async () => {
-                await writeSecret(secretKey, '');
-                toastr.success('API Key removed');
-                await loadSettingOptions();
-            },
-        }],
-    });
-
-    if (!key) {
-        return;
-    }
-
-    await writeSecret(secretKey, String(key));
-
-    toastr.success('API Key saved');
-    await loadSettingOptions();
-}
-
-async function onStabilityKeyClick() {
-    return onApiKeyClick('Stability AI API Key:', SECRET_KEYS.STABILITY);
-}
-
-async function onBflKeyClick() {
-    return onApiKeyClick('BFL API Key:', SECRET_KEYS.BFL);
-}
-
-async function onFalaiKeyClick() {
-    return onApiKeyClick('FALAI API Key:', SECRET_KEYS.FALAI);
-}
-
-async function onAimlapiKeyClick() {
-    return onApiKeyClick('AI/ML API Key:', SECRET_KEYS.AIMLAPI);
 }
 
 function onBflUpsamplingInput() {
@@ -3388,16 +3348,16 @@ async function generateAimlapiImage(prompt, signal) {
 
     const body = { prompt, model };
     if (isSdLike) {
-        body.steps    = clamp(extension_settings.sd.steps,   1,   50);
-        body.guidance = clamp(extension_settings.sd.scale,   1.5, 5);
-        body.width    = clamp(extension_settings.sd.width,   256, 1440);
-        body.height   = clamp(extension_settings.sd.height,  256, 1440);
+        body.steps = clamp(extension_settings.sd.steps, 1, 50);
+        body.guidance = clamp(extension_settings.sd.scale, 1.5, 5);
+        body.width = clamp(extension_settings.sd.width, 256, 1440);
+        body.height = clamp(extension_settings.sd.height, 256, 1440);
         if (extension_settings.sd.seed >= 0) body.seed = extension_settings.sd.seed;
     } else {
-        body.n       = 1;
-        body.size    = `${extension_settings.sd.width}x${extension_settings.sd.height}`;
+        body.n = 1;
+        body.size = `${extension_settings.sd.width}x${extension_settings.sd.height}`;
         body.quality = extension_settings.sd.openai_quality;
-        body.style   = extension_settings.sd.openai_style;
+        body.style = extension_settings.sd.openai_style;
     }
 
     const res = await fetch('/api/sd/aimlapi/generate-image', {
@@ -4603,14 +4563,10 @@ jQuery(async () => {
     $('#sd_interactive_visible').on('input', onInteractiveVisibleInput);
     $('#sd_tool_visible').on('input', onToolVisibleInput);
     $('#sd_swap_dimensions').on('click', onSwapDimensionsClick);
-    $('#sd_stability_key').on('click', onStabilityKeyClick);
     $('#sd_stability_style_preset').on('change', onStabilityStylePresetChange);
     $('#sd_huggingface_model_id').on('input', onHFModelInput);
     $('#sd_function_tool').on('input', onFunctionToolInput);
-    $('#sd_bfl_key').on('click', onBflKeyClick);
     $('#sd_bfl_upsampling').on('input', onBflUpsamplingInput);
-    $('#sd_falai_key').on('click', onFalaiKeyClick);
-    $('#sd_aimlapi_key').on('click', onAimlapiKeyClick);
 
     if (!CSS.supports('field-sizing', 'content')) {
         $('.sd_settings .inline-drawer-toggle').on('click', function () {
@@ -4637,6 +4593,19 @@ jQuery(async () => {
     eventSource.on(event_types.IMAGE_SWIPED, onImageSwiped);
 
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+
+    [event_types.SECRET_WRITTEN, event_types.SECRET_DELETED, event_types.SECRET_ROTATED].forEach(event => {
+        eventSource.on(event, async (/** @type {string} */ key) => {
+            switch (key) {
+                case SECRET_KEYS.BFL:
+                case SECRET_KEYS.FALAI:
+                case SECRET_KEYS.STABILITY:
+                case SECRET_KEYS.AIMLAPI:
+                    await loadSettingOptions();
+                    break;
+            }
+        });
+    });
 
     await loadSettings();
     $('body').addClass('sd');
