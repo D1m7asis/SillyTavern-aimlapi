@@ -56,18 +56,6 @@ function getDreamGenHeaders(directories) {
 }
 
 /**
- * Gets the headers for the AI/ML API.
- * @param {import('./users.js').UserDirectoryList} directories User directories
- * @returns {object} Headers for the request
- */
-function getAimlapiHeaders(directories) {
-    const apiKey = readSecret(directories, SECRET_KEYS.AIMLAPI);
-    const baseHeaders = { ...AIMLAPI_HEADERS };
-
-    return apiKey ? Object.assign(baseHeaders, { 'Authorization': `Bearer ${apiKey}` }) : baseHeaders;
-}
-
-/**
  * Gets the headers for the OpenRouter API.
  * @param {import('./users.js').UserDirectoryList} directories User directories
  * @returns {object} Headers for the request
@@ -234,7 +222,6 @@ export function setAdditionalHeadersByType(requestHeaders, type, server, directo
         [TEXTGEN_TYPES.OOBA]: getOobaHeaders,
         [TEXTGEN_TYPES.INFERMATICAI]: getInfermaticAIHeaders,
         [TEXTGEN_TYPES.DREAMGEN]: getDreamGenHeaders,
-        [TEXTGEN_TYPES.AIMLAPI]: getAimlapiHeaders,
         [TEXTGEN_TYPES.OPENROUTER]: getOpenRouterHeaders,
         [TEXTGEN_TYPES.KOBOLDCPP]: getKoboldCppHeaders,
         [TEXTGEN_TYPES.LLAMACPP]: getLlamaCppHeaders,
